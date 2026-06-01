@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -16,8 +16,9 @@ interface InteractiveMapProps {
   onSelectNode: (node: MapNode) => void;
   onOpenDrawer: (node: MapNode) => void;
   selectedDay?: string;
-  nodes: MapNode[];
-  routes: MapRoute[];
+  dayLabel?: string;
+  nodes?: MapNode[];
+  routes?: MapRoute[];
   center?: [number, number];
 }
 
@@ -100,16 +101,18 @@ export function InteractiveMap({
   onSelectNode,
   onOpenDrawer,
   selectedDay,
-  nodes,
-  routes,
+  dayLabel,
+  nodes = [],
+  routes = [],
   center = MAP_CENTER,
 }: InteractiveMapProps) {
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const markerRefs = useRef<Record<string, L.Marker>>({});
 
   // The Life Map page owns date filtering. This map renders the selected day's saved data.
-  const filteredNodes = nodes;
-  const filteredRoutes = routes;
+  const filteredNodes = nodes || [];
+  const filteredRoutes = routes || [];
 
   // Calculate bounds to fit all markers
   const mapBounds = useMemo(() => {
@@ -127,11 +130,20 @@ export function InteractiveMap({
     if (mapInstance && mapBounds) {
       mapInstance.fitBounds(mapBounds, { padding: [50, 50], maxZoom: 15 });
     }
-  }, [mapInstance, mapBounds]);
+  }, [mapInstance, mapBounds, selectedDay]);
+
+  // Open polaroid popup for the selected marker
+  useEffect(() => {
+    if (!selectedNode) return;
+    const marker = markerRefs.current[selectedNode.name];
+    if (marker) {
+      marker.openPopup();
+    }
+  }, [selectedNode, filteredNodes]);
 
   // Route line styles
-  const routeColor = '#8b5cf6';
-  const routeActiveColor = '#06b6d4';
+  const routeColor = '#06b6d4';
+  const routeActiveColor = '#22d3ee';
 
   return (
     <div className="relative w-full h-[650px] overflow-hidden rounded-[24px] border border-white/10 shadow-2xl">
@@ -185,6 +197,9 @@ export function InteractiveMap({
           return (
             <Marker
               key={node.name}
+              ref={(ref) => {
+                if (ref) markerRefs.current[node.name] = ref;
+              }}
               position={[node.lat, node.lng]}
               icon={createCustomIcon(node.kind, isSelected)}
               eventHandlers={{
@@ -284,7 +299,7 @@ export function InteractiveMap({
       {/* ===== LEGEND ===== */}
       <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-3 rounded-xl border border-white/5 bg-slate-950/90 px-3 py-2 backdrop-blur-xl shadow-2xl">
         <span className="text-[8px] uppercase tracking-wider text-slate-500 font-medium">
-          {selectedDay ? 'Saved Day' : 'Life Map'}
+          {dayLabel?.toUpperCase() || 'TODAY'}
         </span>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">

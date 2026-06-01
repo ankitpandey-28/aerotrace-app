@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import type { Journey, MemoryItem, DiscoveryItem, JourneyStatus, Memory } from '../types';
+import { saveJourney } from '../services/journeyStorage';
 import { journeys as initialJourneys, memories as initialMemories, discoveries as initialDiscoveries } from '../data';
 
 interface User {
@@ -227,6 +228,55 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
     setJourneys((prev) => [completedJourney, ...prev]);
     setActiveJourney(null);
+
+    // Build a SavedJourney record and persist to storage so Life Map can load it
+    try {
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+
+      const saved = {
+        id: completedJourney.id,
+        journeyName: completedJourney.title,
+        date: dateStr,
+        dateLabel: completedJourney.date,
+        startTime: 'Unknown',
+        endTime: 'Unknown',
+        totalDuration: completedJourney.duration,
+        totalDistance: completedJourney.distance,
+        totalLocations: activeJourney?.stops.length || 0,
+        totalMemories: memories.length,
+        totalDiscoveries: discoveries.length,
+        mood: completedJourney.mood,
+        stops: (activeJourney?.stops || []).map((name, i) => ({
+          name,
+          time: '',
+          memoryCount: 0,
+        })),
+        memories: memories.map(m => ({
+          id: `mem-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+          title: m.title,
+          note: m.caption || '',
+          photo: '',
+          timestamp: m.time || '',
+          location: m.location || '',
+        })),
+        discoveries: discoveries.map(d => ({
+          emoji: '✨',
+          title: d.title,
+          detail: d.detail,
+        })),
+        notes: completedJourney.narrative || '',
+        storySummary: completedJourney.narrative || '',
+        nodes: [],
+        routes: [],
+        savedAt: now.toISOString(),
+      };
+
+      saveJourney(saved as any);
+    } catch (e) {
+      // ignore storage errors
+      console.warn('Failed to save journey to storage', e);
+    }
 
     return completedJourney;
   };

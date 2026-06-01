@@ -3,8 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigation } from '../context/NavigationContext';
 import InteractiveMap from '../components/maps/InteractiveMap';
 import MemoryDrawer from '../components/maps/MemoryDrawer';
+import { useMemory } from '../context/MemoryContext';
 import type { MapNode, DailyJourney } from '../types';
-import { dailyJourneys, MAP_CENTER } from '../data';
+import { dailyJourneys as demoDailyJourneys } from '../data';
+import { getAllDailyJourneys } from '../services/journeyStorage';
 
 // ============================================
 // LIFE MAP PAGE - Personal Memory Journal
@@ -16,64 +18,146 @@ import { dailyJourneys, MAP_CENTER } from '../data';
 // 3. Right: Persistent memory drawer with polaroid gallery
 // ============================================
 
-// Helper to format date for display
-const formatDateLabel = (dateStr: string): string => {
-  const date = new Date(dateStr);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+const generateWeekDates = (anchorDate: string, count = 7): string[] => {
+  const dates: string[] = [];
+  const cursor = new Date(anchorDate + 'T12:00:00');
 
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  for (let i = 0; i < count; i++) {
+    dates.push(cursor.toISOString().split('T')[0]);
+    cursor.setDate(cursor.getDate() - 1);
+  }
 
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return dates;
 };
 
-// Helper to get relative day label
-const getRelativeLabel = (dateStr: string): string => {
-  const date = new Date(dateStr);
-  const today = new Date();
-  const diffDays = Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+const getDateTabLabel = (dateStr: string, anchorDate: string): string => {
+  const formatted = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
 
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (dateStr === anchorDate) return `Today (${formatted})`;
+
+  const anchor = new Date(anchorDate + 'T12:00:00');
+  const date = new Date(dateStr + 'T12:00:00');
+  const diffDays = Math.round((anchor.getTime() - date.getTime()) / 86400000);
+
+  if (diffDays === 1) return `Yesterday (${formatted})`;
+  return formatted;
 };
+
+const defaultDemoNode =
+  demoDailyJourneys
+    .find((j) => j.date === '2024-05-31')
+    ?.nodes.find((n) => n.name === 'Riverside Park') ?? null;
 
 export function LifeMapPage() {
   const { go } = useNavigation();
-  const [selectedNode, setSelectedNode] = useState<MapNode | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<string>('2024-05-31'); // Default to today
+  const [selectedNode, setSelectedNode] = useState<MapNode | null>(defaultDemoNode);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<string>('2024-05-31');
   const [showCalendar, setShowCalendar] = useState(false);
+  const [dailyJourneys, setDailyJourneys] = React.useState<DailyJourney[]>(demoDailyJourneys);
+  const [availableDates, setAvailableDates] = React.useState<string[]>(() =>
+    generateWeekDates('2024-05-31')
+  );
+  const anchorDate = availableDates[0] ?? '2024-05-31';
+  const mostRecentDate = availableDates[0] ?? '2024-05-31';
+  const secondRecentDate = availableDates[1] ?? '2024-05-30';
+
+  React.useEffect(() => {
+    const saved = getAllDailyJourneys();
+    const hasMapData = saved.some(
+      (journey) => journey.nodes.length > 0 && journey.routes.length > 0
+    );
+    const journeys = hasMapData ? saved : demoDailyJourneys;
+    const anchor = hasMapData ? saved[0].date : '2024-05-31';
+
+    setDailyJourneys(journeys);
+    setAvailableDates(generateWeekDates(anchor));
+    setSelectedDay(anchor);
+
+    if (!hasMapData) {
+      const riverside = demoDailyJourneys
+        .find((j) => j.date === anchor)
+        ?.nodes.find((n) => n.name === 'Riverside Park');
+
+      if (riverside) {
+        setSelectedNode(riverside);
+        setIsDrawerOpen(true);
+      }
+    }
+  }, []);
 
   // Get current journey data based on selected day
   const currentJourney = useMemo(() => 
     dailyJourneys.find((j) => j.date === selectedDay),
-    [selectedDay]
+    [selectedDay, dailyJourneys]
   );
 
-  // Generate additional past dates for the date strip
-  const pastDates = useMemo(() => {
-    const dates: { date: string; label: string; journey?: DailyJourney }[] = [];
-    const today = new Date('2024-05-31'); // Using the data's "today"
-    
-    for (let i = 2; i <= 7; i++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      const journey = dailyJourneys.find(j => j.date === dateStr);
-      
-      dates.push({
-        date: dateStr,
-        label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        journey
+  // Merge enhanced (in-memory) memories into the journey nodes so UI shows photos/polaroids
+  const { memories: enhancedMemories } = useMemory();
+
+  const displayJourney = useMemo(() => {
+    if (!currentJourney) return null;
+
+    // Find enhanced memories that fall on the same day as the journey
+    const dayMemories = enhancedMemories.filter((m) => {
+      try {
+        return new Date(m.timestamp).toISOString().split('T')[0] === currentJourney.date;
+      } catch {
+        return false;
+      }
+    });
+
+    const nodes = currentJourney.nodes.map((node) => {
+      // Match enhanced memories to node by location name (case-insensitive, substring match)
+      const nodeName = (node.name || '').toLowerCase().trim();
+      const matchedByLocation = dayMemories.filter((m) => {
+        const mLoc = (m.location || '').toLowerCase().trim();
+        if (!mLoc) return false;
+        return mLoc === nodeName || mLoc.includes(nodeName) || nodeName.includes(mLoc);
       });
-    }
-    return dates;
-  }, []);
+
+      // If none matched by location, attempt a looser fallback: match memories that have empty location to the first node only
+      let matched = matchedByLocation;
+      if (matched.length === 0) {
+        matched = dayMemories.filter(m => !m.location || m.location.trim() === '');
+      }
+
+      const extraPhotos = matched.flatMap((m) => (m.photos && m.photos.length > 0 ? m.photos : []));
+
+      const photos = [...(node.photos || []), ...extraPhotos];
+
+      const connected = [
+        ...(node.connectedItems || []),
+        ...matched.map((m) => ({ type: 'memory' as const, title: m.title, icon: '📸', preview: (m.note || '').substring(0, 50) })),
+      ];
+
+      return {
+        ...node,
+        photos: photos.length > 0 ? photos : node.photos,
+        photo: (photos.length > 0 ? photos[0] : node.photo) || node.photo,
+        description: node.description || matched.map((m) => m.note).join(' ' ) || node.description,
+        connectedItems: connected,
+      };
+    });
+
+    return {
+      ...currentJourney,
+      nodes,
+    };
+  }, [currentJourney, enhancedMemories]);
+
+  const journeyToShow = displayJourney || currentJourney;
+
+  const pastDates = useMemo(() => {
+    return availableDates.slice(2, 7).map((dateStr) => ({
+      date: dateStr,
+      label: getDateTabLabel(dateStr, anchorDate),
+      journey: dailyJourneys.find((j) => j.date === dateStr),
+    }));
+  }, [availableDates, dailyJourneys, anchorDate]);
 
   // Handle opening the drawer when a node is selected
   const handleOpenDrawer = (node: MapNode) => {
@@ -122,28 +206,26 @@ export function LifeMapPage() {
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {/* Today */}
           <button
-            onClick={() => setSelectedDay('2024-05-31')}
+            onClick={() => setSelectedDay(mostRecentDate)}
             className={`flex-shrink-0 px-4 py-2.5 rounded-xl border transition-all duration-200 ${
-              selectedDay === '2024-05-31'
+              selectedDay === mostRecentDate
                 ? 'bg-violet-500/20 border-violet-500/50 text-white shadow-lg shadow-violet-500/10'
                 : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white'
             }`}
           >
-            <div className="text-sm font-medium">Today</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">May 31</div>
+            <div className="text-sm font-medium">{getDateTabLabel(mostRecentDate, anchorDate)}</div>
           </button>
 
           {/* Yesterday */}
           <button
-            onClick={() => setSelectedDay('2024-05-30')}
+            onClick={() => setSelectedDay(secondRecentDate)}
             className={`flex-shrink-0 px-4 py-2.5 rounded-xl border transition-all duration-200 ${
-              selectedDay === '2024-05-30'
+              selectedDay === secondRecentDate
                 ? 'bg-violet-500/20 border-violet-500/50 text-white shadow-lg shadow-violet-500/10'
                 : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white'
             }`}
           >
-            <div className="text-sm font-medium">Yesterday</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">May 30</div>
+            <div className="text-sm font-medium">{getDateTabLabel(secondRecentDate, anchorDate)}</div>
           </button>
 
           {/* Divider */}
@@ -247,10 +329,13 @@ export function LifeMapPage() {
             onSelectNode={handleSelectNode}
             onOpenDrawer={handleOpenDrawer}
             selectedDay={selectedDay}
+            dayLabel={journeyToShow?.dayLabel}
+            nodes={journeyToShow?.nodes || []}
+            routes={journeyToShow?.routes || []}
           />
         </motion.div>
 
-        {/* Right Memory Drawer - Persistent */}
+        {/* Right Memory Drawer */}
         <AnimatePresence mode="wait">
           {isDrawerOpen && selectedNode && (
             <motion.div
@@ -258,7 +343,7 @@ export function LifeMapPage() {
               animate={{ opacity: 1, x: 0, width: 400 }}
               exit={{ opacity: 0, x: 50, width: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="flex-shrink-0 h-full"
+              className="flex-shrink-0 h-[650px]"
             >
               <MemoryDrawer
                 node={selectedNode}
@@ -271,7 +356,7 @@ export function LifeMapPage() {
       </div>
 
       {/* ===== DAY SUMMARY (when no location selected) ===== */}
-      {!selectedNode && !isDrawerOpen && currentJourney && (
+      {!selectedNode && !isDrawerOpen && journeyToShow && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -279,8 +364,8 @@ export function LifeMapPage() {
           className="mt-5"
         >
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-              {currentJourney.dayLabel} Summary
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+              {journeyToShow.dayLabel} Summary
             </span>
             <div className="h-px flex-1 bg-gradient-to-r from-slate-700 to-transparent" />
           </div>
@@ -295,7 +380,7 @@ export function LifeMapPage() {
                 </span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {currentJourney.summary.totalDistance}
+                {journeyToShow.summary.totalDistance}
               </div>
             </div>
 
@@ -308,7 +393,7 @@ export function LifeMapPage() {
                 </span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {currentJourney.summary.totalTime}
+                {journeyToShow.summary.totalTime}
               </div>
             </div>
 
@@ -321,7 +406,7 @@ export function LifeMapPage() {
                 </span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {currentJourney.summary.locationsVisited}
+                {journeyToShow.summary.locationsVisited}
               </div>
             </div>
 
@@ -334,7 +419,7 @@ export function LifeMapPage() {
                 </span>
               </div>
               <div className="text-xl font-bold text-white">
-                {currentJourney.summary.mood || '—'}
+                {journeyToShow.summary.mood || '—'}
               </div>
             </div>
           </div>
@@ -354,8 +439,8 @@ export function LifeMapPage() {
 
               {/* Timeline items */}
               <div className="space-y-2">
-                {currentJourney.nodes.map((node, index) => {
-                  const route = currentJourney.routes[index];
+                {journeyToShow.nodes.map((node, index) => {
+                  const route = journeyToShow.routes[index];
 
                   return (
                     <div key={node.name} className="relative pl-8">
