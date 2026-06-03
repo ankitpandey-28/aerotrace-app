@@ -8,6 +8,7 @@ export type Page =
   | 'journey-summary'
   | 'journey-details'
   | 'memories'
+  | 'memories-reel'
   | 'discover'
   | 'life-map'
   | 'safety'

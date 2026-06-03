@@ -42,16 +42,16 @@ AeroTrace unifies route tracking, memory capture, and timeline storytelling so u
 > Replace placeholders with real captures in `./assets/screenshots/`
 
 - Hero / Dashboard  
-  ![Hero placeholder](./assets/screenshots/hero.png)
+  ![Hero placeholder](./assets/screenshots/hero.svg)
 
 - Live Tracking / Map  
-  ![Live tracking placeholder](./assets/screenshots/live-tracking.png)
+  ![Live tracking placeholder](./assets/screenshots/live-tracking.svg)
 
 - Journey Summary  
-  ![Journey summary placeholder](./assets/screenshots/journey-summary.png)
+  ![Journey summary placeholder](./assets/screenshots/journey-summary.svg)
 
 - Life Map / Timeline  
-  ![Life map placeholder](./assets/screenshots/life-map.png)
+  ![Life map placeholder](./assets/screenshots/life-map.svg)
 
 ## **Architecture Overview**
 

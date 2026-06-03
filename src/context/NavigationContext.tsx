@@ -15,7 +15,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     const hash = window.location.hash.replace('#/', '');
     const validPages: Page[] = [
       'landing', 'login', 'signup', 'dashboard', 'start-journey',
-      'live-journey', 'journey-summary', 'journey-details', 'memories',
+      'live-journey', 'journey-summary', 'journey-details', 'memories', 'memories-reel',
       'discover', 'life-map', 'safety', 'profile'
     ];
     return validPages.includes(hash as Page) ? (hash as Page) : 'landing';
