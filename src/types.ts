@@ -36,6 +36,9 @@ export interface MemoryItem {
   caption: string;
   time: string;
   type: 'Photo' | 'Note' | 'Clip' | 'Artifact';
+  lat?: number;
+  lng?: number;
+  timestamp?: string;
 }
 
 // ============================================
@@ -62,6 +65,8 @@ export interface Memory {
   location: string;
   timestamp: string;
   journeyId?: string;
+  lat?: number;
+  lng?: number;
 }
 
 // Suggested tags for quick selection
@@ -94,11 +99,50 @@ export const MOOD_OPTIONS: { value: MoodType; emoji: string; color: string }[] =
   { value: 'Nostalgic', emoji: '🌅', color: 'from-violet-400 to-purple-500' },
 ];
 
-export interface DiscoveryItem {
+export type DiscoveryCategory = 
+  | 'Food' 
+  | 'Cafe' 
+  | 'Nature' 
+  | 'Landmark' 
+  | 'Viewpoint' 
+  | 'Hidden Gem' 
+  | 'Activity' 
+  | 'Personal';
+
+export type DiscoveryCreationSource = 'manual' | 'discovery-field' | 'suggested';
+
+export interface Discovery {
+  id: string;
   title: string;
-  detail: string;
-  category: string;
-  saved: boolean;
+  category: DiscoveryCategory;
+  description: string;
+  lat?: number;
+  lng?: number;
+  timestamp: string;
+  
+  // Core Media & Organization
+  coverPhoto?: string;
+  photo?: string;
+  tags?: string[];
+  
+  // Relations
+  sourceMemoryId?: string;
+  sourceJourneyId?: string;
+  locationName: string;
+  
+  // Engagement Metadata
+  isFavorite?: boolean;
+  visitCount?: number;
+  lastVisited?: string;
+  
+  // Analytics & Telemetry
+  creationSource: DiscoveryCreationSource;
+  
+  // Future Compatibility (Community)
+  visibility?: 'private' | 'public';
+  authorId?: string;
+  likes?: number;
+  commentsCount?: number;
 }
 
 // ============================================
@@ -160,6 +204,7 @@ export interface DailyJourney {
   dayLabel: string; // e.g., "Today", "Yesterday", "May 29"
   nodes: MapNode[];
   routes: MapRoute[];
+  storySummary?: string;
   summary: {
     totalDistance: string;
     totalTime: string;

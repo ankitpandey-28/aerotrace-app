@@ -168,6 +168,8 @@ export function StartJourneyPage() {
   const [selectedMood, setSelectedMood] = useState(moodOptions[0]);
   const [selectedPrivacy, setSelectedPrivacy] = useState(privacyOptions[0]);
   const [gpsStatus, setGpsStatus] = useState<'connected' | 'searching' | 'lost'>('searching');
+  const [initialLat, setInitialLat] = useState<number | undefined>(undefined);
+  const [initialLng, setInitialLng] = useState<number | undefined>(undefined);
 
   // Tracking state
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -178,23 +180,46 @@ export function StartJourneyPage() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Simulate GPS detection on mount
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setGpsStatus('connected');
-      // Simulate getting current location
-      const locations = [
-        'Central Park West, New York',
-        'Shibuya Crossing, Tokyo',
-        'Hyde Park Corner, London',
-        'Marine Drive, Mumbai',
-        'Federation Square, Melbourne',
-      ];
-      setCurrentLocation(locations[Math.floor(Math.random() * locations.length)]);
-    }, 1500);
+  // Request real GPS location
+  const requestGPSLocation = () => {
+    if ('geolocation' in navigator) {
+      setGpsStatus('searching');
+      setCurrentLocation('Detecting location...');
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setGpsStatus('connected');
+          const { latitude, longitude } = position.coords;
+          setInitialLat(latitude);
+          setInitialLng(longitude);
+          setCurrentLocation(`Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`);
+        },
+        (error) => {
+          setGpsStatus('lost');
+          if (error.code === error.PERMISSION_DENIED) {
+            setCurrentLocation('GPS Permission Denied');
+          } else {
+            setCurrentLocation('GPS Signal Lost / Unavailable');
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    } else {
+      setGpsStatus('lost');
+      setCurrentLocation('GPS Geolocation not supported');
+    }
+  };
 
-    return () => clearTimeout(timer);
+  // Run on mount
+  useEffect(() => {
+    requestGPSLocation();
   }, []);
+
+  // Redirect to live journey page if already tracking
+  useEffect(() => {
+    if (isTracking && activeJourney) {
+      go('live-journey');
+    }
+  }, [isTracking, activeJourney, go]);
 
   // Handle tracking timer
   useEffect(() => {
@@ -214,7 +239,14 @@ export function StartJourneyPage() {
   // Start a new journey
   const handleStartJourney = () => {
     const moodLabel = selectedMood.label;
-    startNewJourney(journeyName || `${selectedMood.label} Walk`, moodLabel, currentLocation, '');
+    startNewJourney(
+      journeyName || `${selectedMood.label} Walk`,
+      moodLabel,
+      currentLocation,
+      '',
+      initialLat,
+      initialLng
+    );
     setElapsedTime(0);
     setDistanceTravelled(0);
     setLocationsVisited([currentLocation]);
@@ -526,7 +558,7 @@ export function StartJourneyPage() {
                   <GPSStatusIndicator status={gpsStatus} />
                 </div>
               </div>
-              <Button variant="glass" size="sm">
+              <Button variant="glass" size="sm" onClick={requestGPSLocation}>
                 Update
               </Button>
             </div>

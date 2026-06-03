@@ -1,13 +1,29 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import type { Journey, MemoryItem, DiscoveryItem, JourneyStatus, Memory } from '../types';
+import type { Journey, MemoryItem, Discovery, JourneyStatus, Memory } from '../types';
 import { saveJourney } from '../services/journeyStorage';
-import { journeys as initialJourneys, memories as initialMemories, discoveries as initialDiscoveries } from '../data';
+import { journeys as initialJourneys, memories as initialMemories } from '../data';
+import { useNavigation } from './NavigationContext';
 
 interface User {
   name: string;
   email: string;
   avatar: string;
   homeCity: string;
+}
+
+export interface ActiveJourneyCoordinate {
+  lat: number;
+  lng: number;
+  timestamp?: number;
+  accuracy?: number;
+}
+
+export interface ActiveJourneyStop {
+  name: string;
+  lat: number;
+  lng: number;
+  time: string;
+  timestamp: string;
 }
 
 interface ActiveJourneyState {
@@ -18,95 +34,234 @@ interface ActiveJourneyState {
   destination: string;
   durationSec: number;
   distanceMeters: number;
-  stops: string[];
-  coordinates: { x: number; y: number }[];
+  stops: ActiveJourneyStop[];
+  coordinates: ActiveJourneyCoordinate[];
   color: string;
+  isPaused: boolean;
+  lastMovementTime: number;
 }
 
 interface JourneyContextType {
   user: User | null;
   journeys: Journey[];
   memories: MemoryItem[];
-  discoveries: DiscoveryItem[];
+  discoveries: Discovery[];
   activeJourney: ActiveJourneyState | null;
   isTracking: boolean;
   sosActive: boolean;
+  lastCompletedJourney: ActiveJourneyState | null;
+  gpsError: string | null;
+  isOffline: boolean;
+  gpsStatus: 'Active' | 'Weak' | 'Denied' | 'Offline';
+  gpsAccuracy: number | null;
+  showInactivityWarning: boolean;
+  setShowInactivityWarning: React.Dispatch<React.SetStateAction<boolean>>;
+  pauseJourney: () => void;
+  resumeJourney: () => void;
+  cancelCurrentJourney: () => void;
   login: (email: string) => void;
   signup: (name: string, email: string) => void;
   logout: () => void;
-  startNewJourney: (title: string, mood: string, startPoint: string, destination: string) => void;
+  startNewJourney: (title: string, mood: string, startPoint: string, destination: string, initialLat?: number, initialLng?: number) => void;
   addCheckpoint: (name: string) => void;
   captureMemory: (title: string, caption: string, type: MemoryItem['type']) => void;
   endCurrentJourney: () => Journey;
-  toggleSaveDiscovery: (title: string) => void;
+  addDiscovery: (discovery: Discovery) => void;
   triggerSOS: () => void;
   resetSOS: () => void;
 }
 
 const JourneyContext = createContext<JourneyContextType | undefined>(undefined);
 
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // in meters
+}
+
 export function JourneyProvider({ children }: { children: React.ReactNode }) {
+  const { page } = useNavigation();
+
   // Mock active user session
   const [user, setUser] = useState<User | null>(null);
 
   // Lists of data
   const [journeys, setJourneys] = useState<Journey[]>(initialJourneys);
   const [memories, setMemories] = useState<MemoryItem[]>(initialMemories);
-  const [discoveries, setDiscoveries] = useState<DiscoveryItem[]>(initialDiscoveries);
+  const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
 
   // Active tracking state
   const [activeJourney, setActiveJourney] = useState<ActiveJourneyState | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [sosActive, setSosActive] = useState(false);
+  const [lastCompletedJourney, setLastCompletedJourney] = useState<ActiveJourneyState | null>(null);
 
-  // Simulated live tracking tick
+  // GPS specific states
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+  const [watchId, setWatchId] = useState<number | null>(null);
+
+  // Monitor online/offline network state
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
 
-    if (isTracking && activeJourney) {
-      interval = setInterval(() => {
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const gpsStatus = useMemo(() => {
+    if (isOffline) return 'Offline';
+    if (gpsError && gpsError.includes('Denied')) return 'Denied';
+    if (gpsError || !gpsAccuracy || gpsAccuracy > 50) return 'Weak';
+    return 'Active';
+  }, [isOffline, gpsError, gpsAccuracy]);
+
+  // Geolocation watchPosition continuous logging (Battery optimized: only runs while active & tracking & on live page)
+  // NOTE: We deliberately do NOT include activeJourney in the dependency array to prevent the watcher
+  // from being torn down and restarted on every GPS coordinate update. The watcher callback uses the
+  // functional form of setActiveJourney so it always reads the latest state without needing the
+  // dependency. Only isTracking, isPaused, and page changes should restart the watcher.
+  const isPaused = activeJourney?.isPaused ?? false;
+  useEffect(() => {
+    let activeWatchId: number | null = null;
+
+    if (isTracking && !isPaused && page === 'live-journey') {
+      if ('geolocation' in navigator) {
+        setGpsError(null);
+        console.log('[GPS] watchPosition started — isTracking:', isTracking, 'isPaused:', isPaused, 'page:', page);
+        
+        activeWatchId = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude, accuracy } = position.coords;
+            const timestamp = position.timestamp;
+
+            setGpsAccuracy(accuracy);
+            setGpsError(null);
+
+            setActiveJourney((current) => {
+              if (!current) return null;
+              if (current.isPaused) return current;
+
+              const lastCoord = current.coordinates[current.coordinates.length - 1];
+              let distanceDelta = 0;
+              let nextLastMovementTime = current.lastMovementTime;
+
+              if (lastCoord) {
+                distanceDelta = calculateDistance(
+                  lastCoord.lat,
+                  lastCoord.lng,
+                  latitude,
+                  longitude
+                );
+                
+                // If they moved significantly (> 2 meters), reset inactivity timer
+                if (distanceDelta > 2) {
+                  nextLastMovementTime = Date.now();
+                }
+              } else {
+                nextLastMovementTime = Date.now();
+              }
+
+              const newCount = current.coordinates.length + 1;
+              console.log(`[GPS] Point #${newCount} recorded — lat: ${latitude.toFixed(6)}, lng: ${longitude.toFixed(6)}, accuracy: ±${accuracy.toFixed(1)}m`);
+
+              return {
+                ...current,
+                distanceMeters: current.distanceMeters + distanceDelta,
+                lastMovementTime: nextLastMovementTime,
+                coordinates: [
+                  ...current.coordinates,
+                  { lat: latitude, lng: longitude, timestamp, accuracy }
+                ]
+              };
+            });
+          },
+          (error) => {
+            let msg = 'Weak Signal';
+            if (error.code === error.PERMISSION_DENIED) {
+              msg = 'GPS Permission Denied';
+            } else if (error.code === error.POSITION_UNAVAILABLE) {
+              msg = 'GPS Position Unavailable';
+            } else if (error.code === error.TIMEOUT) {
+              msg = 'GPS Signal Timeout';
+            }
+            console.warn('[GPS] watchPosition error:', msg, error);
+            setGpsError(msg);
+            setGpsAccuracy(null);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          }
+        );
+        
+        setWatchId(activeWatchId);
+        console.log('[GPS] watchPosition watchId assigned:', activeWatchId);
+      } else {
+        setGpsError('GPS Position Unavailable');
+        console.warn('[GPS] navigator.geolocation not available');
+      }
+    } else {
+      console.log('[GPS] watchPosition NOT started — isTracking:', isTracking, 'isPaused:', isPaused, 'page:', page);
+    }
+
+    return () => {
+      if (activeWatchId !== null) {
+        navigator.geolocation.clearWatch(activeWatchId);
+        setWatchId(null);
+        console.log('[GPS] watchPosition cleared — watchId:', activeWatchId);
+      }
+    };
+  }, [isTracking, isPaused, page]);
+
+  // Live duration ticker & Inactivity warning checker
+  useEffect(() => {
+    let tickInterval: ReturnType<typeof setInterval> | null = null;
+
+    if (isTracking && activeJourney && !activeJourney.isPaused) {
+      tickInterval = setInterval(() => {
         setActiveJourney((current) => {
           if (!current) return null;
+          if (current.isPaused) return current;
 
-          // Increment time
           const nextSec = current.durationSec + 1;
           
-          // Increment distance by random walking speed (e.g. 1.2 to 2.2 meters per second)
-          const deltaDistance = Math.random() * 1.5 + 1.1;
-          const nextDistance = current.distanceMeters + deltaDistance;
-
-          // Periodically generate simulated coordinates inside vector container
-          const lastCoord = current.coordinates[current.coordinates.length - 1];
-          let nextCoord = { ...lastCoord };
-          
-          // Gently push coordinate towards destination
-          if (Math.random() > 0.4) {
-            const angle = Math.random() * Math.PI * 2;
-            nextCoord = {
-              x: Math.max(10, Math.min(90, lastCoord.x + Math.cos(angle) * 1.2)),
-              y: Math.max(10, Math.min(90, lastCoord.y + Math.sin(angle) * 1.2)),
-            };
-          }
-
-          const coordinates = [...current.coordinates];
-          if (nextSec % 8 === 0) {
-            coordinates.push(nextCoord);
+          // Check for movement inactivity (5 minutes = 300 seconds)
+          const timeSinceLastMovement = Date.now() - current.lastMovementTime;
+          if (timeSinceLastMovement >= 5 * 60 * 1000 && !showInactivityWarning) {
+            setShowInactivityWarning(true);
           }
 
           return {
             ...current,
             durationSec: nextSec,
-            distanceMeters: nextDistance,
-            coordinates,
           };
         });
       }, 1000);
     }
 
     return () => {
-      if (interval) clearInterval(interval);
+      if (tickInterval) clearInterval(tickInterval);
     };
-  }, [isTracking]);
+  }, [isTracking, activeJourney?.isPaused, showInactivityWarning]);
 
   // Auth Operations
   const login = (email: string) => {
@@ -114,7 +269,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       name: 'Alex Morgan',
       email: email,
       avatar: 'AM',
-      homeCity: 'San Francisco',
+      homeCity: '',
     });
   };
 
@@ -123,7 +278,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       name: name,
       email: email,
       avatar: name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
-      homeCity: 'San Francisco',
+      homeCity: '',
     });
   };
 
@@ -134,7 +289,14 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Journey Operations
-  const startNewJourney = (title: string, mood: string, startPoint: string, destination: string) => {
+  const startNewJourney = (
+    title: string,
+    mood: string,
+    startPoint: string,
+    destination: string,
+    initialLat?: number,
+    initialLng?: number
+  ) => {
     const randomColors = [
       'from-cyan-400 to-indigo-500',
       'from-emerald-400 to-teal-500',
@@ -143,63 +305,89 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     ];
     const color = randomColors[Math.floor(Math.random() * randomColors.length)];
 
+    const initialCoords = (initialLat !== undefined && initialLng !== undefined)
+      ? [{ lat: initialLat, lng: initialLng, timestamp: Date.now(), accuracy: 10 }]
+      : [];
+
     setActiveJourney({
       id: `j-${Date.now()}`,
       title: title || 'New Adventure Walk',
       mood: mood || 'Energetic',
-      startPoint: startPoint || 'Current Location',
-      destination: destination || 'Unexplored Territory',
+      startPoint: startPoint || 'Starting Point',
+      destination: destination || 'Destination',
       durationSec: 0,
       distanceMeters: 0,
-      stops: [startPoint || 'Start Point'],
-      coordinates: [{ x: 30 + Math.random() * 20, y: 40 + Math.random() * 20 }],
+      stops: [],
+      coordinates: initialCoords,
       color,
+      isPaused: false,
+      lastMovementTime: Date.now(),
     });
     setIsTracking(true);
+    setShowInactivityWarning(false);
   };
 
   const addCheckpoint = (name: string) => {
     if (!activeJourney) return;
+
     setActiveJourney((current) => {
       if (!current) return null;
+
+      const lastCoord = current.coordinates[current.coordinates.length - 1];
+      
+      let lat = lastCoord?.lat;
+      let lng = lastCoord?.lng;
+
+      // Fallback: parse coordinates from startPoint if active coordinates are not yet logged
+      if (lat === undefined || lng === undefined) {
+        const match = current.startPoint.match(/Lat:\s*([\d.-]+),\s*Lng:\s*([\d.-]+)/);
+        if (match) {
+          lat = parseFloat(match[1]);
+          lng = parseFloat(match[2]);
+        } else {
+          lat = 0;
+          lng = 0;
+        }
+      }
+
+      const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const newStop = { 
+        name, 
+        lat, 
+        lng, 
+        time,
+        timestamp: new Date().toISOString()
+      };
+
       return {
         ...current,
-        stops: [...current.stops, name],
+        stops: [...current.stops, newStop],
       };
     });
 
-    // Also trigger a random discovery occasionally when stop is added
-    const newDiscovery: DiscoveryItem = {
-      title: `Scenic Spot near ${name}`,
-      detail: 'Surfaced via AeroTrace routine-breaking suggestions.',
-      category: 'Place',
-      saved: false,
-    };
-    setDiscoveries(prev => [newDiscovery, ...prev]);
+    // No demo discovery generation: rely on real user-saved discoveries only
   };
 
   const captureMemory = (title: string, caption: string, type: MemoryItem['type']) => {
     if (!activeJourney) return;
 
+    const lastCoord = activeJourney.coordinates[activeJourney.coordinates.length - 1];
+    const lat = lastCoord?.lat;
+    const lng = lastCoord?.lng;
+
     // Create a visual memory
     const newMemory: MemoryItem = {
       title: title || 'Captured Moment',
-      location: activeJourney.stops[activeJourney.stops.length - 1] || 'Along Route',
+      location: activeJourney.stops[activeJourney.stops.length - 1]?.name || 'Along Route',
       caption: caption || 'No caption provided.',
       time: 'Just now',
       type,
+      lat,
+      lng,
+      timestamp: new Date().toISOString(),
     };
 
     setMemories((prev) => [newMemory, ...prev]);
-
-    // Add visual mark to active journey stops
-    setActiveJourney(current => {
-      if (!current) return null;
-      return {
-        ...current,
-        stops: [...current.stops, title || 'Photo Pin']
-      };
-    });
   };
 
   const endCurrentJourney = (): Journey => {
@@ -207,9 +395,24 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
     setIsTracking(false);
 
+    // ── GPS Diagnostics Logging ──────────────────────────────────────────────
+    console.log('[Journey End] GPS Diagnostics:');
+    console.log(`  coordinates.length  : ${activeJourney.coordinates.length}`);
+    console.log(`  distanceMeters      : ${activeJourney.distanceMeters.toFixed(2)} m`);
+    console.log(`  durationSec         : ${activeJourney.durationSec} s`);
+    if (activeJourney.coordinates.length > 0) {
+      const first = activeJourney.coordinates[0];
+      const last  = activeJourney.coordinates[activeJourney.coordinates.length - 1];
+      console.log(`  first coord         : lat ${first.lat.toFixed(6)}, lng ${first.lng.toFixed(6)}`);
+      console.log(`  last  coord         : lat ${last.lat.toFixed(6)},  lng ${last.lng.toFixed(6)}`);
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     // Format final summary
     const formattedDuration = `${Math.floor(activeJourney.durationSec / 60)}m ${activeJourney.durationSec % 60}s`;
     const formattedDistance = `${(activeJourney.distanceMeters / 1000).toFixed(2)} km`;
+
+    const stopsList = activeJourney.stops.map(s => s.name);
 
     const completedJourney: Journey = {
       id: activeJourney.id,
@@ -222,69 +425,41 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       location: activeJourney.startPoint,
       narrative: `An exploration that spanned from ${activeJourney.startPoint} to ${activeJourney.destination}, fueled by a ${activeJourney.mood.toLowerCase()} mindset and resulting in ${activeJourney.stops.length} custom checkpoints.`,
       color: activeJourney.color,
-      stops: activeJourney.stops,
+      stops: stopsList,
       tags: [activeJourney.mood, 'Fresh track', 'Explored'],
     };
 
     setJourneys((prev) => [completedJourney, ...prev]);
+    setLastCompletedJourney(activeJourney);
     setActiveJourney(null);
-
-    // Build a SavedJourney record and persist to storage so Life Map can load it
-    try {
-      const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
-
-      const saved = {
-        id: completedJourney.id,
-        journeyName: completedJourney.title,
-        date: dateStr,
-        dateLabel: completedJourney.date,
-        startTime: 'Unknown',
-        endTime: 'Unknown',
-        totalDuration: completedJourney.duration,
-        totalDistance: completedJourney.distance,
-        totalLocations: activeJourney?.stops.length || 0,
-        totalMemories: memories.length,
-        totalDiscoveries: discoveries.length,
-        mood: completedJourney.mood,
-        stops: (activeJourney?.stops || []).map((name, i) => ({
-          name,
-          time: '',
-          memoryCount: 0,
-        })),
-        memories: memories.map(m => ({
-          id: `mem-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-          title: m.title,
-          note: m.caption || '',
-          photo: '',
-          timestamp: m.time || '',
-          location: m.location || '',
-        })),
-        discoveries: discoveries.map(d => ({
-          emoji: '✨',
-          title: d.title,
-          detail: d.detail,
-        })),
-        notes: completedJourney.narrative || '',
-        storySummary: completedJourney.narrative || '',
-        nodes: [],
-        routes: [],
-        savedAt: now.toISOString(),
-      };
-
-      saveJourney(saved as any);
-    } catch (e) {
-      // ignore storage errors
-      console.warn('Failed to save journey to storage', e);
-    }
+    setShowInactivityWarning(false);
 
     return completedJourney;
   };
 
-  const toggleSaveDiscovery = (title: string) => {
-    setDiscoveries(prev => prev.map(item => 
-      item.title === title ? { ...item, saved: !item.saved } : item
-    ));
+  const pauseJourney = () => {
+    setActiveJourney(current => {
+      if (!current) return null;
+      return { ...current, isPaused: true };
+    });
+  };
+
+  const resumeJourney = () => {
+    setActiveJourney(current => {
+      if (!current) return null;
+      return { ...current, isPaused: false, lastMovementTime: Date.now() };
+    });
+    setShowInactivityWarning(false);
+  };
+
+  const cancelCurrentJourney = () => {
+    setIsTracking(false);
+    setActiveJourney(null);
+    setShowInactivityWarning(false);
+  };
+
+  const addDiscovery = (discovery: Discovery) => {
+    setDiscoveries(prev => [discovery, ...prev]);
   };
 
   // Safety controls
@@ -305,6 +480,16 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       activeJourney,
       isTracking,
       sosActive,
+      lastCompletedJourney,
+      gpsError,
+      isOffline,
+      gpsStatus,
+      gpsAccuracy,
+      showInactivityWarning,
+      setShowInactivityWarning,
+      pauseJourney,
+      resumeJourney,
+      cancelCurrentJourney,
       login,
       signup,
       logout,
@@ -312,7 +497,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       addCheckpoint,
       captureMemory,
       endCurrentJourney,
-      toggleSaveDiscovery,
+      addDiscovery,
       triggerSOS,
       resetSOS,
     }}>

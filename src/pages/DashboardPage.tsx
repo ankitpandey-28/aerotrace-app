@@ -3,10 +3,17 @@ import { useNavigation } from '../context/NavigationContext';
 import { useJourney } from '../context/JourneyContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import { getAllSavedDiscoveries } from '../services/journeyStorage';
 
 export function DashboardPage() {
   const { go } = useNavigation();
   const { journeys, memories, discoveries, user } = useJourney();
+
+  const allDiscoveries = React.useMemo(() => {
+    const saved = getAllSavedDiscoveries();
+    const merged = [...discoveries, ...saved];
+    return Array.from(new Map(merged.map(d => [d.id, d])).values());
+  }, [discoveries]);
 
   return (
     <div className="space-y-8">
@@ -35,8 +42,8 @@ export function DashboardPage() {
               <div className="text-sm text-[#A0A8B8] mt-1">Memories</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-white">{discoveries.filter(d => d.saved).length}</div>
-              <div className="text-sm text-[#A0A8B8] mt-1">Saved Discoveries</div>
+              <div className="text-3xl font-bold text-white">{allDiscoveries.length}</div>
+              <div className="text-sm text-[#A0A8B8] mt-1">Discoveries</div>
             </div>
           </div>
 
@@ -148,7 +155,7 @@ export function DashboardPage() {
             </div>
 
             <div className="space-y-3">
-              {discoveries.slice(0, 3).map((discovery, idx) => (
+              {allDiscoveries.slice(0, 3).map((discovery, idx) => (
                 <div
                   key={idx}
                   className="rounded-[24px] border border-white/10 bg-[#161A22]/80 p-4 hover:bg-[#161A22] transition-all duration-200"
@@ -156,15 +163,15 @@ export function DashboardPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <h4 className="font-semibold text-white text-sm">{discovery.title}</h4>
-                      <p className="text-xs text-[#A0A8B8] mt-1">{discovery.detail}</p>
+                      <p className="text-xs text-[#A0A8B8] mt-1">{discovery.description}</p>
                       <p className="text-[10px] text-[#A0A8B8] mt-2 uppercase tracking-wide">{discovery.category}</p>
                     </div>
                     <button
                       className={`shrink-0 text-xl transition-transform duration-200 hover:scale-110 ${
-                        discovery.saved ? 'text-[#4F8CFF]' : 'text-[#A0A8B8]'
+                        discovery.isFavorite ? 'text-rose-500' : 'text-[#A0A8B8]'
                       }`}
                     >
-                      {discovery.saved ? '❤️' : '🤍'}
+                      {discovery.isFavorite ? '❤️' : '🤍'}
                     </button>
                   </div>
                 </div>

@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMemory } from '../../context/MemoryContext';
 import { useJourney } from '../../context/JourneyContext';
-import type { Memory, MoodType } from '../../types';
+import type { Memory, MoodType, Discovery, DiscoveryCategory } from '../../types';
 import { MOOD_OPTIONS, SUGGESTED_TAGS } from '../../types';
 import PolaroidPhoto from './PolaroidPhoto';
 import Card from '../ui/Card';
@@ -16,7 +16,7 @@ interface MemoryModalProps {
 
 export function MemoryModal({ isOpen, onClose, onSuccess }: MemoryModalProps) {
   const { addMemory } = useMemory();
-  const { activeJourney } = useJourney();
+  const { activeJourney, addDiscovery } = useJourney();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -26,7 +26,9 @@ export function MemoryModal({ isOpen, onClose, onSuccess }: MemoryModalProps) {
   const [mood, setMood] = useState<MoodType | ''>('');
   const [tags, setTags] = useState<string[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [isDiscovery, setIsDiscovery] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [suggestion, setSuggestion] = useState<{ memory: Memory, category: string } | null>(null);
 
   // Get current location from active journey
   const currentLocation = activeJourney?.stops[activeJourney.stops.length - 1] || 'Along Route';
@@ -76,10 +78,41 @@ export function MemoryModal({ isOpen, onClose, onSuccess }: MemoryModalProps) {
     e.preventDefault();
     if (!title.trim() || !mood) return;
 
+    console.log('[MemoryModal submit] Form submitted:', {
+      title: title.trim(),
+      note: note.trim(),
+      discovery: discovery.trim(),
+      mood,
+      tags,
+      photosCount: photos.length,
+      location: typeof currentLocation === 'string' ? currentLocation : currentLocation.name,
+      journeyId: activeJourney?.id,
+    });
+
     setIsSubmitting(true);
 
     // Simulate a small delay for better UX
     await new Promise(resolve => setTimeout(resolve, 500));
+
+    const lastCoord = activeJourney?.coordinates[activeJourney.coordinates.length - 1];
+    let lat = lastCoord?.lat;
+    let lng = lastCoord?.lng;
+
+    if (lat === undefined || lng === undefined) {
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 3000 });
+        });
+        lat = position.coords.latitude;
+        lng = position.coords.longitude;
+      } catch (err) {
+        // Don't fallback to demo coordinates; leave coords undefined if unavailable
+        lat = undefined;
+        lng = undefined;
+      }
+    }
+
+    console.log('[MemoryModal submit] Geotagging coordinates resolved to:', { lat, lng });
 
     const memoryData = {
       title: title.trim(),
@@ -88,24 +121,107 @@ export function MemoryModal({ isOpen, onClose, onSuccess }: MemoryModalProps) {
       mood: mood as MoodType,
       tags,
       photos,
-      location: currentLocation,
+      location: typeof currentLocation === 'string' ? currentLocation : currentLocation.name,
       journeyId: activeJourney?.id,
+      lat,
+      lng,
     };
 
     const newMemory = addMemory(memoryData);
     
-    // Reset form
+    // Evaluate discovery
+    const hasDiscoveryField = discovery.trim().length > 0;
+    
+    // Heuristic checking
+    const categoryKeywords = ['Food', 'Cafe', 'Nature', 'Landmark', 'Viewpoint', 'Hidden Gem', 'Activity', 'Personal'];
+    let suggestedCategory = '';
+    for (const tag of tags) {
+      const match = categoryKeywords.find(c => tag.toLowerCase().includes(c.toLowerCase()));
+      if (match) {
+        suggestedCategory = match;
+        break;
+      }
+    }
+    
+    if (isDiscovery || hasDiscoveryField) {
+      // Auto create discovery
+      const newDiscovery: Discovery = {
+         id: `discovery-${Date.now()}`,
+         title: title.trim(),
+         category: (suggestedCategory || 'Personal') as DiscoveryCategory,
+         description: discovery.trim() || note.trim(),
+         lat,
+         lng,
+         timestamp: new Date().toISOString(),
+         coverPhoto: photos[0],
+         photo: photos[0],
+         tags,
+         sourceMemoryId: newMemory.id,
+         sourceJourneyId: activeJourney?.id,
+         locationName: typeof currentLocation === 'string' ? currentLocation : currentLocation.name,
+         creationSource: isDiscovery ? 'manual' : 'discovery-field',
+         visitCount: 1
+      };
+      addDiscovery(newDiscovery);
+      
+      resetForm();
+      if (onSuccess) onSuccess(newMemory);
+      onClose();
+    } else if (suggestedCategory) {
+       // Show suggestion prompt!
+       setSuggestion({ memory: newMemory, category: suggestedCategory });
+    } else {
+       resetForm();
+       if (onSuccess) onSuccess(newMemory);
+       onClose();
+    }
+  };
+
+  const resetForm = () => {
     setTitle('');
     setNote('');
     setDiscovery('');
     setMood('');
     setTags([]);
     setPhotos([]);
+    setIsDiscovery(false);
     setIsSubmitting(false);
+  };
 
-    if (onSuccess) {
-      onSuccess(newMemory);
+  const handleCreateSuggestedDiscovery = () => {
+    if (!suggestion) return;
+    
+    const newDiscovery: Discovery = {
+       id: `discovery-${Date.now()}`,
+       title: suggestion.memory.title,
+       category: suggestion.category as DiscoveryCategory,
+       description: suggestion.memory.note || 'A meaningful find.',
+       lat: suggestion.memory.lat,
+       lng: suggestion.memory.lng,
+       timestamp: new Date().toISOString(),
+       coverPhoto: suggestion.memory.photos?.[0],
+       photo: suggestion.memory.photos?.[0],
+       tags: suggestion.memory.tags,
+       sourceMemoryId: suggestion.memory.id,
+       sourceJourneyId: activeJourney?.id,
+       locationName: suggestion.memory.location,
+       creationSource: 'suggested',
+       visitCount: 1
+    };
+    addDiscovery(newDiscovery);
+    
+    resetForm();
+    if (onSuccess) onSuccess(suggestion.memory);
+    setSuggestion(null);
+    onClose();
+  };
+
+  const handleDismissSuggestion = () => {
+    if (suggestion && onSuccess) {
+      onSuccess(suggestion.memory);
     }
+    resetForm();
+    setSuggestion(null);
     onClose();
   };
 
@@ -224,6 +340,22 @@ export function MemoryModal({ isOpen, onClose, onSuccess }: MemoryModalProps) {
                   <label className="block mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-slate-500">
                     💡 Discovery
                   </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-slate-300">Mark as Discovery</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsDiscovery(!isDiscovery)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        isDiscovery ? 'bg-cyan-400' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          isDiscovery ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={discovery}
@@ -310,7 +442,7 @@ export function MemoryModal({ isOpen, onClose, onSuccess }: MemoryModalProps) {
                       📍 Location
                     </label>
                     <div className="rounded-[28px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
-                      {currentLocation}
+                      {typeof currentLocation === 'string' ? currentLocation : currentLocation.name}
                     </div>
                   </div>
                   <div>
@@ -347,6 +479,46 @@ export function MemoryModal({ isOpen, onClose, onSuccess }: MemoryModalProps) {
               </form>
             </Card>
           </motion.div>
+          
+          {/* Suggestion Overlay */}
+          <AnimatePresence>
+            {suggestion && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md"
+              >
+                <Card className="w-full max-w-md p-6 text-center border border-cyan-400/30 shadow-[0_0_50px_-12px_rgba(34,211,238,0.2)]">
+                  <div className="w-16 h-16 rounded-full bg-cyan-400/10 flex items-center justify-center mx-auto mb-4 text-3xl">
+                    💡
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Create Discovery?</h3>
+                  <p className="text-slate-400 text-sm mb-6">
+                    You tagged this memory with <strong>{suggestion.category}</strong>. 
+                    Would you like to save <strong>{suggestion.memory.title}</strong> as a curated Discovery?
+                  </p>
+                  
+                  <div className="space-y-3">
+                    <Button 
+                      onClick={handleCreateSuggestedDiscovery}
+                      variant="primary" 
+                      className="w-full"
+                    >
+                      ✨ Create Discovery
+                    </Button>
+                    <Button 
+                      onClick={handleDismissSuggestion}
+                      variant="glass" 
+                      className="w-full text-slate-400"
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </AnimatePresence>

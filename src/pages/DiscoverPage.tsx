@@ -1,133 +1,223 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useJourney } from '../context/JourneyContext';
-import Card from '../components/ui/Card';
-import Button from '../components/ui/Button';
-import Toast from '../components/ui/Toast';
-import MapRibbon from '../components/maps/MapRibbon';
+import { getAllSavedDiscoveries } from '../services/journeyStorage';
+import type { Discovery, DiscoveryCategory } from '../types';
+import DiscoveryDetailPanel from '../components/discoveries/DiscoveryDetailPanel';
+import DiscoveryFeaturedHero from '../components/discoveries/DiscoveryFeaturedHero';
+import DiscoveryJournalCard from '../components/discoveries/DiscoveryJournalCard';
+import { getJournalCardSize } from '../components/discoveries/discoveryPresentation';
+import { motion } from 'framer-motion';
+
+type SortOption = 'Newest' | 'Oldest' | 'Favorites' | 'Most Visited';
+type FilterOption = 'All' | DiscoveryCategory;
 
 export function DiscoverPage() {
-  const { discoveries, toggleSaveDiscovery } = useJourney();
-  const [filter, setFilter] = useState<'All' | 'Place' | 'Event' | 'Route'>('All');
+  const { discoveries: activeDiscoveries } = useJourney();
+  const [filter, setFilter] = useState<FilterOption>('All');
+  const [sortBy, setSortBy] = useState<SortOption>('Newest');
+  const [selectedDiscovery, setSelectedDiscovery] = useState<Discovery | null>(null);
 
-  // Slide-in Toast states
-  const [showToast, setShowToast] = useState(false);
-  const [toastMsg, setToastMsg] = useState('');
-  const [toastSub, setToastSub] = useState('');
+  const allDiscoveries = useMemo(() => {
+    const saved = getAllSavedDiscoveries();
+    const merged = [...activeDiscoveries, ...saved];
+    return Array.from(new Map(merged.map((d) => [d.id, d])).values());
+  }, [activeDiscoveries]);
 
-  const handleToggleSave = (title: string, currentlySaved: boolean) => {
-    toggleSaveDiscovery(title);
-    setToastMsg(currentlySaved ? 'Removed from Life Map' : 'Saved to Life Map');
-    setToastSub(
-      currentlySaved 
-        ? `"${title}" has been unpinned from your custom discovery dashboard.` 
-        : `"${title}" pinned as a custom coordinate anchor node.`
+  const processedDiscoveries = useMemo(() => {
+    let result = [...allDiscoveries];
+
+    if (filter !== 'All') {
+      result = result.filter((d) => d.category === filter);
+    }
+
+    result.sort((a, b) => {
+      if (sortBy === 'Newest') {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      }
+      if (sortBy === 'Oldest') {
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      }
+      if (sortBy === 'Most Visited') {
+        return (b.visitCount || 0) - (a.visitCount || 0);
+      }
+      if (sortBy === 'Favorites') {
+        if (a.isFavorite && !b.isFavorite) return -1;
+        if (!a.isFavorite && b.isFavorite) return 1;
+        return 0;
+      }
+      return 0;
+    });
+
+    return result;
+  }, [allDiscoveries, filter, sortBy]);
+
+  const featuredDiscovery = processedDiscoveries[0] ?? null;
+  const collectionDiscoveries = featuredDiscovery
+    ? processedDiscoveries.slice(1)
+    : processedDiscoveries;
+
+  const categories: FilterOption[] = [
+    'All',
+    'Food',
+    'Cafe',
+    'Nature',
+    'Landmark',
+    'Viewpoint',
+    'Hidden Gem',
+    'Activity',
+    'Personal',
+  ];
+  const sortOptions: SortOption[] = ['Newest', 'Oldest', 'Favorites', 'Most Visited'];
+
+  if (allDiscoveries.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6 max-w-lg mx-auto">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400/15 to-violet-500/15 flex items-center justify-center mb-10 border border-white/5"
+        >
+          <span className="text-4xl">✨</span>
+        </motion.div>
+        <h2 className="text-3xl sm:text-4xl font-serif italic text-white mb-5 leading-snug tracking-tight">
+          Places worth returning to
+        </h2>
+        <p className="text-slate-400 font-light leading-relaxed mb-2">
+          Start a journey. Capture a memory. Mark the moment as a discovery.
+        </p>
+        <p className="text-sm text-slate-500 font-light">
+          Your personal collection of meaningful places will grow here — like pages in a travel journal.
+        </p>
+      </div>
     );
-    setShowToast(true);
-  };
-
-  const filteredDiscoveries = filter === 'All'
-    ? discoveries
-    : discoveries.filter(d => d.category === filter);
+  }
 
   return (
-    <div className="space-y-6">
-      
-      {/* Header Panel */}
-      <section className="rounded-[28px] border border-white/5 bg-slate-900/40 p-6 backdrop-blur-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 font-medium">
-              ROUTINE BREAKER DETECTOR
-            </span>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Discoveries Console
-            </h2>
-            <p className="mt-2 text-xs text-slate-400 font-light leading-5 max-w-xl">
-              AeroTrace cross-references your wander corridors and repeated coordinates to highlight patterns you may have overlooked. These are suggestions surfaced dynamically.
-            </p>
-          </div>
-        </div>
+    <div className="pb-24 max-w-6xl mx-auto">
+      {/* Editorial header */}
+      <header className="mb-12 sm:mb-16">
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-[10px] font-semibold uppercase tracking-[0.32em] text-amber-200/60 mb-4"
+        >
+          Your collection
+        </motion.p>
+        <motion.h1
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight leading-[1.05] mb-5"
+        >
+          Discoveries
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="text-lg text-slate-400 font-light max-w-xl leading-relaxed"
+        >
+          Not a list of pins — a scrapbook of places that changed how you see the world.
+        </motion.p>
 
-        {/* Category Toggles */}
-        <div className="mt-6 flex flex-wrap gap-2 border-t border-white/5 pt-4">
-          {(['All', 'Place', 'Event', 'Route'] as const).map((cat) => {
-            const isActive = filter === cat;
-            return (
-              <Button
-                key={cat}
+        {/* Soft filters — journal tabs, not dashboard controls */}
+        <div className="mt-10 space-y-5">
+          <div className="flex overflow-x-auto custom-scrollbar gap-2 pb-1 -mx-1 px-1">
+            {categories.map((cat) => {
+              const isActive = filter === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setFilter(cat)}
+                  className={`whitespace-nowrap px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                    isActive
+                      ? 'bg-amber-500/15 text-amber-100 border border-amber-400/25'
+                      : 'text-slate-500 hover:text-slate-300 border border-transparent hover:border-white/10'
+                  }`}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap gap-3 text-xs">
+            <span className="text-slate-600 self-center mr-1">Arrange by</span>
+            {sortOptions.map((sort) => (
+              <button
+                key={sort}
                 type="button"
-                variant={isActive ? 'primary' : 'glass'}
-                size="sm"
-                onClick={() => setFilter(cat)}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold ${isActive ? 'text-slate-950' : 'text-slate-400'} ${
-                  isActive ? 'shadow-md shadow-white/5' : 'hover:bg-white/5 hover:text-white'
+                onClick={() => setSortBy(sort)}
+                className={`px-3 py-1.5 rounded-full transition-colors ${
+                  sortBy === sort
+                    ? 'text-slate-200 underline decoration-amber-400/60 underline-offset-4'
+                    : 'text-slate-600 hover:text-slate-400'
                 }`}
               >
-                {cat === 'All' ? 'All Surfaced' : `${cat}s`}
-              </Button>
-            );
-          })}
+                {sort}
+              </button>
+            ))}
+          </div>
         </div>
-      </section>
+      </header>
 
-      {/* Discoveries list */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {filteredDiscoveries.map((item, idx) => (
-          <Card key={idx} className="flex flex-col justify-between min-h-[220px]" glowColor={item.saved ? 'bg-cyan-400' : ''}>
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-white/5 text-xs">
-                <span className="font-bold text-white uppercase tracking-wider">{item.title}</span>
-                <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[9px] uppercase tracking-wider text-slate-400 font-light">
-                  {item.category}
-                </span>
-              </div>
+      {/* Featured hero */}
+      {featuredDiscovery && (
+        <section className="mb-14 sm:mb-20">
+          <DiscoveryFeaturedHero
+            discovery={featuredDiscovery}
+            onOpen={setSelectedDiscovery}
+          />
+        </section>
+      )}
 
-              <p className="mt-4 text-sm leading-6 text-slate-300 font-light">
-                {item.detail}
-              </p>
-              
-              <div className="mt-3 text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
-                {item.saved ? '⚡ Constellation Anchor' : '⚡ Unsaved suggestion'}
-              </div>
-            </div>
+      {/* Journal collection — masonry-style breathing layout */}
+      {collectionDiscoveries.length > 0 && (
+        <section>
+          <div className="flex items-baseline justify-between mb-8 sm:mb-10 px-1">
+            <h2 className="font-serif text-2xl text-white/90 italic">More chapters</h2>
+            <span className="text-xs text-slate-600 font-light">
+              {collectionDiscoveries.length} place
+              {collectionDiscoveries.length !== 1 ? 's' : ''}
+            </span>
+          </div>
 
-            <div className="mt-6 border-t border-white/5 pt-4 flex justify-between items-center">
-              <Button
-                variant={item.saved ? 'primary' : 'glass'}
-                size="sm"
-                onClick={() => handleToggleSave(item.title, item.saved)}
-              >
-                {item.saved ? 'Saved to Constellation ✓' : 'Save Anchor Node'}
-              </Button>
-              
-              <span className="text-[10px] text-slate-600 font-light">Surfaced via trace index</span>
-            </div>
-          </Card>
-        ))}
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-x-8 gap-y-12 sm:gap-x-10 sm:gap-y-14">
+            {collectionDiscoveries.map((discovery, idx) => {
+              const size = getJournalCardSize(idx);
+              const gridClass =
+                size === 'wide'
+                  ? 'md:col-span-2 lg:col-span-12'
+                  : size === 'tall'
+                    ? 'lg:col-span-4'
+                    : 'lg:col-span-6';
 
-      {/* Grid Canvas Preview */}
-      <section className="rounded-[28px] border border-white/5 bg-slate-900/40 p-6 backdrop-blur-xl max-w-3xl">
-        <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
-          Discovery radar area
-        </h3>
-        <p className="mt-2 text-xs text-slate-400 font-light leading-5 max-w-xl">
-          A visual chart showing memory coordinate corridors currently scanning for anomalies:
+              return (
+                <div key={discovery.id} className={gridClass}>
+                  <DiscoveryJournalCard
+                    discovery={discovery}
+                    index={idx}
+                    onOpen={setSelectedDiscovery}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {processedDiscoveries.length === 0 && filter !== 'All' && (
+        <p className="text-center text-slate-500 font-light py-16 font-serif italic">
+          No discoveries in this chapter yet. Try another filter.
         </p>
-        <div className="mt-6">
-          <MapRibbon />
-        </div>
-      </section>
+      )}
 
-      {/* Slide-in Notifications */}
-      <Toast
-        show={showToast}
-        message={toastMsg}
-        subtitle={toastSub}
-        onClose={() => setShowToast(false)}
+      <DiscoveryDetailPanel
+        discovery={selectedDiscovery}
+        onClose={() => setSelectedDiscovery(null)}
       />
-
     </div>
   );
 }
+
 export default DiscoverPage;

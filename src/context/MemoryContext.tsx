@@ -24,6 +24,7 @@ export function MemoryProvider({ children }: { children: React.ReactNode }) {
       timestamp: new Date().toISOString(),
     };
     
+    console.log('[addMemory()] Added memory to MemoryContext:', newMemory);
     setMemories(prev => [newMemory, ...prev]);
     return newMemory;
   }, []);

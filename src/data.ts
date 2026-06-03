@@ -1,5 +1,5 @@
 import type {
-  DiscoveryItem,
+  Discovery,
   Journey,
   MapNode,
   MapRoute,
@@ -86,40 +86,16 @@ export const memories: MemoryItem[] = [
   },
 ];
 
-export const discoveries: DiscoveryItem[] = [
-  {
-    title: 'Late-hour tea cart',
-    detail: 'Open until 1:30 AM. Better after rain.',
-    category: 'Place',
-    saved: true,
-  },
-  {
-    title: 'Bridge Session Series',
-    detail: 'Weekly live jazz under the south viaduct.',
-    category: 'Event',
-    saved: true,
-  },
-  {
-    title: 'New walking corridor',
-    detail: 'A quieter route between the station and riverfront.',
-    category: 'Route',
-    saved: false,
-  },
-  {
-    title: 'Cafe with archive wall',
-    detail: 'Local zines, neighborhood photos, and excellent espresso.',
-    category: 'Place',
-    saved: true,
-  },
-];
+export const discoveries: Discovery[] = [];
 
 // ============================================
 // LIFE MAP - Real Map Data with Geographic Coordinates
 // ============================================
 
 // Center point for the map (example city - can be customized)
-export const MAP_CENTER: [number, number] = [40.758, -73.9855]; // Times Square, NYC area
-export const MAP_ZOOM = 13;
+// Neutral default center — map will fit to journey bounds when real data exists
+export const MAP_CENTER: [number, number] = [0, 0];
+export const MAP_ZOOM = 2;
 
 // ============================================
 // TODAY'S JOURNEY - May 31

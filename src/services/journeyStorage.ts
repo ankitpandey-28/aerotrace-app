@@ -1,4 +1,4 @@
-import type { MapNode, MapRoute, DailyJourney, MoodType } from '../types';
+import type { MapNode, MapRoute, DailyJourney, MoodType, Discovery } from '../types';
 
 // ============================================
 // JOURNEY STORAGE SERVICE
@@ -17,6 +17,7 @@ export interface SavedJourneyStop {
   memoryCount: number;
   lat?: number;
   lng?: number;
+  timestamp?: string;
 }
 
 export interface SavedJourneyMemory {
@@ -26,13 +27,14 @@ export interface SavedJourneyMemory {
   photo: string;
   timestamp: string;
   location: string;
+  lat?: number;
+  lng?: number;
+  mood?: string;
+  discovery?: string;
+  tags?: string[];
 }
 
-export interface SavedJourneyDiscovery {
-  emoji: string;
-  title: string;
-  detail: string;
-}
+// Legacy discovery type removed in favor of Discovery from types.ts
 
 export interface SavedJourney {
   id: string;
@@ -49,7 +51,7 @@ export interface SavedJourney {
   mood: MoodType | string;
   stops: SavedJourneyStop[];
   memories: SavedJourneyMemory[];
-  discoveries: SavedJourneyDiscovery[];
+  discoveries: Discovery[];
   notes: string;
   storySummary: string;
   // Map data
@@ -62,16 +64,41 @@ export interface SavedJourney {
 // STORAGE OPERATIONS
 // ============================================
 
+/** Seed generic demo data into localStorage if empty to prevent a cold-start blank screen */
+export function seedDemoDataIfEmpty(): void {
+  // Disabled to prevent seeding mock San Francisco journeys in personal GPS timeline
+}
+
 /** Get all saved journeys from localStorage */
 export function getSavedJourneys(): SavedJourney[] {
   try {
+    seedDemoDataIfEmpty();
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const journeys = Array.isArray(parsed) ? parsed : [];
+    // Filter out demo journeys to prevent rendering them on the Life Map
+    return journeys.filter(j => !j.id.startsWith('journey-demo-'));
   } catch {
     return [];
   }
+}
+
+/** Get all discoveries from all saved journeys */
+export function getAllSavedDiscoveries(): Discovery[] {
+  const journeys = getSavedJourneys();
+  const allDiscoveries: Discovery[] = [];
+  
+  journeys.forEach(journey => {
+    if (journey.discoveries && journey.discoveries.length > 0) {
+      allDiscoveries.push(...journey.discoveries);
+    }
+  });
+  
+  // Sort by newest first by default
+  return allDiscoveries.sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
 }
 
 /** Save a new journey to localStorage */
@@ -134,8 +161,8 @@ export function toDailyJourney(date: string): DailyJourney | null {
     } else {
       // Build MapNodes from stops
       journey.stops.forEach((stop, idx) => {
-        const lat = stop.lat || (40.7484 + (idx * 0.004) + (Math.random() * 0.002));
-        const lng = stop.lng || (-73.9857 + (idx * 0.003) + (Math.random() * 0.002));
+        const lat = stop.lat !== undefined ? stop.lat : 0;
+        const lng = stop.lng !== undefined ? stop.lng : 0;
 
         // Find memories at this location
         const locationMemories = journey.memories.filter(m => m.location === stop.name);
@@ -164,7 +191,7 @@ export function toDailyJourney(date: string): DailyJourney | null {
           kind,
           date: journey.dateLabel,
           time: stop.time,
-          timestamp: `${stop.time}`,
+          timestamp: stop.timestamp || `${stop.time}`,
           mood: journey.mood,
           photo: photos[0] || undefined,
           photos: photos.length > 0 ? photos : undefined,
@@ -183,8 +210,8 @@ export function toDailyJourney(date: string): DailyJourney | null {
             ...locationDiscoveries.map(d => ({
               type: 'discovery' as const,
               title: d.title,
-              icon: d.emoji,
-              preview: d.detail.substring(0, 50),
+              icon: d.category === 'Food' || d.category === 'Cafe' ? '☕' : d.category === 'Nature' ? '🌳' : '✨',
+              preview: (d.description || '').substring(0, 50),
             })),
           ],
           storyContent: idx === journey.stops.length - 1 ? journey.storySummary : undefined,
@@ -251,11 +278,14 @@ export function toDailyJourney(date: string): DailyJourney | null {
   const mins = totalTimeMin % 60;
   const totalTime = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 
+  const storySummary = journeys.map((j) => j.storySummary).filter(Boolean).join('\n\n');
+
   return {
     date,
     dayLabel,
     nodes: allNodes,
     routes: allRoutes,
+    storySummary: storySummary || undefined,
     summary: {
       totalDistance: `${totalDistanceKm.toFixed(1)} km`,
       totalTime,

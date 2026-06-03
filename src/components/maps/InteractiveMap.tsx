@@ -114,16 +114,36 @@ export function InteractiveMap({
   const filteredNodes = nodes || [];
   const filteredRoutes = routes || [];
 
-  // Calculate bounds to fit all markers
+  // Calculate bounds to fit all markers and route coordinates
   const mapBounds = useMemo(() => {
-    if (filteredNodes.length === 0) return null;
-    const lats = filteredNodes.map((n) => n.lat);
-    const lngs = filteredNodes.map((n) => n.lng);
+    const lats: number[] = [];
+    const lngs: number[] = [];
+
+    // Add marker coordinates
+    filteredNodes.forEach((n) => {
+      if (typeof n.lat === 'number' && typeof n.lng === 'number') {
+        lats.push(n.lat);
+        lngs.push(n.lng);
+      }
+    });
+
+    // Add route path coordinates
+    filteredRoutes.forEach((r) => {
+      r.pathCoords.forEach((coord) => {
+        if (typeof coord[1] === 'number' && typeof coord[0] === 'number') {
+          lats.push(coord[1]);
+          lngs.push(coord[0]);
+        }
+      });
+    });
+
+    if (lats.length === 0 || lngs.length === 0) return null;
+
     return L.latLngBounds(
       L.latLng(Math.min(...lats), Math.min(...lngs)),
       L.latLng(Math.max(...lats), Math.max(...lngs))
     );
-  }, [filteredNodes]);
+  }, [filteredNodes, filteredRoutes]);
 
   // Fit map to bounds when day changes
   useEffect(() => {
@@ -141,6 +161,14 @@ export function InteractiveMap({
     }
   }, [selectedNode, filteredNodes]);
 
+  // Dynamic initial center based on nodes
+  const mapCenter: [number, number] = useMemo(() => {
+    if (filteredNodes.length > 0 && typeof filteredNodes[0].lat === 'number' && typeof filteredNodes[0].lng === 'number') {
+      return [filteredNodes[0].lat, filteredNodes[0].lng];
+    }
+    return center;
+  }, [filteredNodes, center]);
+
   // Route line styles
   const routeColor = '#06b6d4';
   const routeActiveColor = '#22d3ee';
@@ -149,7 +177,7 @@ export function InteractiveMap({
     <div className="relative w-full h-[650px] overflow-hidden rounded-[24px] border border-white/10 shadow-2xl">
       {/* Map Container */}
       <MapContainer
-        center={center}
+        center={mapCenter}
         zoom={MAP_ZOOM}
         style={{ width: '100%', height: '100%' }}
         className="rounded-[24px]"

@@ -12,6 +12,8 @@ interface MemoryDrawerProps {
   node: MapNode | null;
   isOpen: boolean;
   onClose: () => void;
+  /** Journey-level story from saved data (shown when node has no storyContent) */
+  journeyStorySummary?: string;
 }
 
 // Node type configurations
@@ -159,11 +161,35 @@ function PolaroidGallery({ photos }: { photos: string[] }) {
 // ============================================
 // MEMORY DRAWER COMPONENT
 // ============================================
-export function MemoryDrawer({ node, isOpen, onClose }: MemoryDrawerProps) {
+function formatTimestampDisplay(timestamp?: string, time?: string): string | null {
+  if (timestamp) {
+    try {
+      const d = new Date(timestamp);
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return time || null;
+}
+
+export function MemoryDrawer({ node, isOpen, onClose, journeyStorySummary }: MemoryDrawerProps) {
   if (!node) return null;
 
   const config = nodeTypeConfig[node.kind];
   const photos = node.photos || (node.photo ? [node.photo] : []);
+  const visitedAt = formatTimestampDisplay(node.timestamp, node.time);
+  const discoveryItems =
+    node.connectedItems?.filter((item) => item.type === 'discovery') ?? [];
+  const storyText = node.storyContent || journeyStorySummary;
 
   return (
     <div className="h-full rounded-2xl border border-white/10 bg-slate-900/95 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col">
@@ -231,7 +257,7 @@ export function MemoryDrawer({ node, isOpen, onClose }: MemoryDrawerProps) {
                 {node.date}
               </span>
             )}
-            {node.time && (
+            {visitedAt && (
               <span className="flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
@@ -241,7 +267,7 @@ export function MemoryDrawer({ node, isOpen, onClose }: MemoryDrawerProps) {
                     d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {node.time}
+                {visitedAt}
               </span>
             )}
           </div>
@@ -287,13 +313,14 @@ export function MemoryDrawer({ node, isOpen, onClose }: MemoryDrawerProps) {
           </motion.div>
         )}
 
-        {/* ===== DISCOVERIES ===== */}
-        {node.connectedItems && node.connectedItems.length > 0 && (
+        {/* ===== DISCOVERIES (saved memory.discovery + journey discoveries only) ===== */}
+        {discoveryItems.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35 }}
             className="mb-5"
+            data-testid="drawer-discoveries"
           >
             <div className="flex items-center gap-2 mb-3">
               <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">
@@ -302,7 +329,7 @@ export function MemoryDrawer({ node, isOpen, onClose }: MemoryDrawerProps) {
               <div className="h-px flex-1 bg-gradient-to-r from-emerald-500/30 to-transparent" />
             </div>
             <div className="space-y-2">
-              {node.connectedItems.map((item, i) => (
+              {discoveryItems.map((item, i) => (
                 <div
                   key={i}
                   className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
@@ -318,23 +345,24 @@ export function MemoryDrawer({ node, isOpen, onClose }: MemoryDrawerProps) {
           </motion.div>
         )}
 
-        {/* ===== STORY SUMMARY ===== */}
-        {node.storyContent && (
+        {/* ===== STORY SUMMARY (saved journey.storySummary) ===== */}
+        {storyText && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
             className="mb-5"
+            data-testid="drawer-story-summary"
           >
             <div className="flex items-center gap-2 mb-3">
               <span className="text-xl">✦</span>
               <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-amber-400/80">
-                Story
+                Story Summary
               </span>
             </div>
             <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-              <p className="text-sm text-slate-300 font-light leading-loose">
-                {node.storyContent}
+              <p className="text-sm text-slate-300 font-light leading-loose whitespace-pre-wrap">
+                {storyText}
               </p>
             </div>
           </motion.div>
