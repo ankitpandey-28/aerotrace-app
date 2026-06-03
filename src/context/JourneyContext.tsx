@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import type { Journey, MemoryItem, Discovery, JourneyStatus, Memory } from '../types';
-import { saveJourney } from '../services/journeyStorage';
-import { journeys as initialJourneys, memories as initialMemories } from '../data';
+import { saveJourney, getSavedJourneys } from '../services/journeyStorage';
+import { journeys as initialJourneys } from '../data';
 import { useNavigation } from './NavigationContext';
 
 interface User {
@@ -95,8 +95,37 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
   // Lists of data
-  const [journeys, setJourneys] = useState<Journey[]>(initialJourneys);
-  const [memories, setMemories] = useState<MemoryItem[]>(initialMemories);
+  // Load saved journeys from localStorage (real user data). Fall back to seeded initialJourneys only for dev.
+  // Convert stored SavedJourney -> Journey shape used by the UI
+  const mapSavedToJourney = (s: any): Journey => {
+    return {
+      id: s.id,
+      title: s.journeyName || s.title || 'Journey',
+      date: s.dateLabel || s.date || new Date(s.savedAt || Date.now()).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      status: 'Completed',
+      duration: s.totalDuration || s.totalTime || '0m',
+      distance: s.totalDistance || '0 km',
+      mood: s.mood || 'Neutral',
+      location: s.stops && s.stops[0] ? s.stops[0].name : (s.startPoint || 'Unknown'),
+      narrative: s.storySummary || s.notes || '',
+      color: s.mood ? 'from-cyan-400 to-indigo-500' : 'from-emerald-400 to-teal-500',
+      stops: (s.stops || []).map((st: any) => st.name),
+      tags: s.tags || [],
+    } as Journey;
+  };
+
+  const [journeys, setJourneys] = useState<Journey[]>(() => {
+    try {
+      const saved = getSavedJourneys();
+      if (saved.length > 0) return saved.map(mapSavedToJourney);
+      return initialJourneys;
+    } catch {
+      return initialJourneys;
+    }
+  });
+
+  // MemoryJournal should be driven by MemoryContext; keep legacy memory list empty to avoid demo data.
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
 
   // Active tracking state

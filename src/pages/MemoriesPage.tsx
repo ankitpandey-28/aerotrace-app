@@ -9,7 +9,7 @@ import PolaroidPhoto from '../components/memory/PolaroidPhoto';
 import type { MemoryItem, Memory } from '../types';
 
 export function MemoriesPage() {
-  const { memories: legacyMemories } = useJourney();
+  const { /* legacyMemories */ } = useJourney();
   const { memories: enhancedMemories, deleteMemory } = useMemory();
   const [filter, setFilter] = useState<'All' | MemoryItem['type'] | 'Journal'>('All');
   const [moodFilter, setMoodFilter] = useState<string>('All');
@@ -22,7 +22,7 @@ export function MemoriesPage() {
   });
 
   const hasEnhancedMemories = enhancedMemories.length > 0;
-  const hasLegacyMemories = legacyMemories.length > 0;
+  const hasLegacyMemories = false;
 
   // Format timestamp for display
   const formatTimestamp = (timestamp: string) => {
@@ -130,7 +130,7 @@ export function MemoriesPage() {
         ) : null}
       </section>
 
-      {/* Enhanced Journal Memories Grid */}
+      {/* Enhanced Journal Memories Grid (driven by MemoryContext) */}
       {filteredMemories.length > 0 && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <AnimatePresence>
@@ -236,116 +236,14 @@ export function MemoriesPage() {
       )}
 
       {/* Empty State */}
-      {!hasEnhancedMemories && filter === 'Journal' && (
+      {!hasEnhancedMemories && (
         <div className="text-center py-16">
           <span className="text-5xl mb-4 block">📖</span>
-          <h3 className="text-lg font-semibold text-white">No Journal Entries Yet</h3>
+          <h3 className="text-lg font-semibold text-white">Your story hasn't started yet.</h3>
           <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
-            Start capturing your memories during your journeys. Add photos, notes, discoveries, and tag your feelings.
+            Start a journey, capture moments, and your memories will appear here.
           </p>
         </div>
-      )}
-
-      {/* Legacy Memories (for backward compatibility) */}
-      {filter !== 'Journal' && hasLegacyMemories && (
-        <>
-          <div className="border-t border-white/10 pt-6">
-            <h3 className="text-sm font-semibold text-slate-400 mb-4">
-              Legacy Memory Capsules ({legacyMemories.length})
-            </h3>
-          </div>
-          
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <AnimatePresence>
-              {legacyMemories.map((m, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                >
-                  <Card className="flex flex-col justify-between h-full min-h-[260px] relative">
-                    {/* Header Tag */}
-                    <div className="flex items-center justify-between pb-3 border-b border-white/5 text-xs">
-                      <span className="font-semibold text-white">{m.location}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wider ${
-                        m.type === 'Photo' ? 'bg-cyan-500/10 text-cyan-300' :
-                        m.type === 'Clip' ? 'bg-violet-500/10 text-violet-300' :
-                        m.type === 'Note' ? 'bg-amber-500/10 text-amber-300' :
-                        'bg-emerald-500/10 text-emerald-300'
-                      }`}>
-                        {m.type}
-                      </span>
-                    </div>
-
-                    {/* Core content body */}
-                    <div className="mt-4 flex-1">
-                      {m.type === 'Photo' && (
-                        <div className="space-y-3">
-                          <div className="h-28 w-full bg-slate-950 border border-white/5 rounded-xl flex items-center justify-center text-3xl opacity-80">
-                            🖼️
-                          </div>
-                          <h4 className="text-sm font-semibold text-white leading-tight">{m.title}</h4>
-                          <p className="text-xs text-slate-400 font-light italic">"{m.caption}"</p>
-                        </div>
-                      )}
-
-                      {m.type === 'Clip' && (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 bg-violet-400/10 text-violet-300 border border-violet-400/20 rounded-xl flex items-center justify-center text-lg">
-                              🎙️
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-semibold text-white leading-tight">{m.title}</h4>
-                              <span className="text-[10px] text-slate-500 font-light">Voice Capsule • 0:14 Sec</span>
-                            </div>
-                          </div>
-                          <div className="h-8 flex items-end gap-[3px] bg-slate-950/40 p-2 rounded-lg border border-white/5">
-                            {[4,8,12,6,16,10,22,14,8,18,24,12,6,10,4,8,16,12,4,2].map((h, i) => (
-                              <div key={i} className="flex-1 bg-violet-400 rounded-full" style={{ height: `${h}%` }} />
-                            ))}
-                          </div>
-                          <p className="text-xs text-slate-400 font-light leading-5">{m.caption}</p>
-                        </div>
-                      )}
-
-                      {m.type === 'Note' && (
-                        <div className="space-y-3 p-3 rounded-xl border border-amber-500/10 bg-amber-500/[0.02]">
-                          <h4 className="text-sm font-semibold text-amber-300 leading-tight">{m.title}</h4>
-                          <p className="text-xs text-slate-300 leading-relaxed font-light font-serif">
-                            "{m.caption}"
-                          </p>
-                        </div>
-                      )}
-
-                      {m.type === 'Artifact' && (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 bg-emerald-400/10 text-emerald-300 border border-emerald-400/20 rounded-xl flex items-center justify-center text-lg">
-                              🎟️
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-semibold text-white leading-tight">{m.title}</h4>
-                              <span className="text-[10px] text-slate-500 font-light">Physical Scan</span>
-                            </div>
-                          </div>
-                          <p className="text-xs text-slate-400 font-light leading-5">{m.caption}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer time stamp */}
-                    <div className="mt-6 border-t border-white/5 pt-3 text-[10px] uppercase font-bold tracking-wider text-slate-600">
-                      {m.time}
-                    </div>
-                  </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        </>
       )}
     </div>
   );

@@ -18,9 +18,9 @@ export const journeys: Journey[] = [
     mood: 'Curious',
     location: 'Shoreline District',
     narrative:
-      'A slow city loop through food stalls, neon alleys, and an unexpected jazz set under the station bridge.',
+      'An evening exploration through the city — a mix of sights, sounds, and little discoveries.',
     color: 'from-cyan-400 to-indigo-500',
-    stops: ['Station Steps', 'Tea Stall Row', 'Bridge Stage', 'Night Tram'],
+    stops: [],
     tags: ['Night walk', 'Soundtracked', 'Spontaneous'],
   },
   {
@@ -33,9 +33,9 @@ export const journeys: Journey[] = [
     mood: 'Reflective',
     location: 'Old Quarter',
     narrative:
-      'Collected storefront reflections, handwritten menus, and the kind of quiet that makes a city feel personal.',
+      'A reflective walk through quiet streets and small discoveries.',
     color: 'from-emerald-400 to-teal-500',
-    stops: ['Book Arcade', 'Cobbled Lane', 'Back Courtyard', 'Cafe Glasshouse'],
+    stops: [],
     tags: ['Rain', 'Story-rich', 'Urban'],
   },
   {
@@ -55,36 +55,7 @@ export const journeys: Journey[] = [
   },
 ];
 
-export const memories: MemoryItem[] = [
-  {
-    title: 'Steam from the cart',
-    location: 'Tea Stall Row',
-    caption: 'The air smelled like cardamom and wet asphalt.',
-    time: '18 min ago',
-    type: 'Photo',
-  },
-  {
-    title: 'Bridge jazz note',
-    location: 'Bridge Stage',
-    caption: 'A saxophone line matched the train rhythm below.',
-    time: '43 min ago',
-    type: 'Clip',
-  },
-  {
-    title: 'Menu tucked in pocket',
-    location: 'Book Arcade',
-    caption: 'Paper receipt, handwritten prices, and a memory worth keeping.',
-    time: 'Yesterday',
-    type: 'Artifact',
-  },
-  {
-    title: 'Window reflection',
-    location: 'Night Tram',
-    caption: 'City lights layered over a half-finished thought.',
-    time: '2 days ago',
-    type: 'Note',
-  },
-];
+export const memories: MemoryItem[] = [];
 
 export const discoveries: Discovery[] = [];
 

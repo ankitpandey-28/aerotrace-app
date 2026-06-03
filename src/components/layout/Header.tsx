@@ -20,7 +20,7 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
       'journey-summary': 'Chapter Summary',
       'journey-details': 'Chapters Retrospective',
       memories: 'Scrapbook Reel',
-      'memories-reel': 'Memories Reel',
+      'memories-reel': 'Memory Journal',
       discover: 'Discoveries Cabinet',
       'life-map': 'Signature Life Map',
       safety: 'Safety Control Center',
