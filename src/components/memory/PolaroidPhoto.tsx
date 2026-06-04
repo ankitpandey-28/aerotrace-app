@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 
 interface PolaroidPhotoProps {
@@ -20,6 +20,7 @@ export function PolaroidPhoto({
   onRemove,
   className = '',
 }: PolaroidPhotoProps) {
+  const [hasError, setHasError] = useState(false);
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.8, rotate: 0 }}
@@ -35,11 +36,18 @@ export function PolaroidPhoto({
       <div className="relative bg-white p-3 pb-8 rounded-sm shadow-[0_8px_32px_-12px_rgba(0,0,0,0.4)] hover:shadow-[0_12px_48px_-16px_rgba(0,0,0,0.5)] transition-shadow duration-300">
         {/* Photo Container */}
         <div className="relative overflow-hidden rounded-sm bg-slate-100">
-          <img
-            src={src}
-            alt={caption || 'Memory photo'}
-            className="w-full h-40 object-cover"
-          />
+          {!hasError ? (
+            <img
+              src={src}
+              alt={caption || 'Memory photo'}
+              className="w-full h-40 object-cover"
+              onError={() => setHasError(true)}
+            />
+          ) : (
+            <div className="w-full h-40 bg-white/5 flex items-center justify-center text-slate-400 text-sm">
+              No photo
+            </div>
+          )}
           
           {/* Remove Button */}
           {removable && onRemove && (

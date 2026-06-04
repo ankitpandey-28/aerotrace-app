@@ -3,16 +3,19 @@ import { motion } from 'framer-motion';
 import Card from '../ui/Card';
 import PolaroidPhoto from './PolaroidPhoto';
 import type { Journey } from '../../types';
+import { useMemory } from '../../context/MemoryContext';
 
 interface ReelDetailProps {
   journey: Journey | null;
-  memories: { src: string; caption?: string }[];
   discoveries: { title: string; description?: string; coverPhoto?: string }[];
   onClose: () => void;
 }
 
-export function ReelDetailModal({ journey, memories, discoveries, onClose }: ReelDetailProps) {
+export function ReelDetailModal({ journey, discoveries, onClose }: ReelDetailProps) {
+  const { getMemoriesByJourney } = useMemory();
   if (!journey) return null;
+
+  const memories = getMemoriesByJourney(journey.id);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -26,9 +29,18 @@ export function ReelDetailModal({ journey, memories, discoveries, onClose }: Ree
         className="relative max-w-4xl w-full"
       >
         <Card className="p-0 overflow-visible">
-          {/* Hero cover */}
-          <div className="h-56 w-full overflow-hidden bg-slate-800">
-            <img src={memories[0]?.src || '/assets/screenshots/journey-cover.png'} alt={journey.title} className="w-full h-full object-cover" />
+          {/* Hero cover: first photo of first memory */}
+          <div className="h-56 w-full overflow-hidden bg-slate-800 flex items-center justify-center">
+            {memories[0]?.photos?.[0] ? (
+              <img
+                src={memories[0].photos[0]}
+                alt={journey.title}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              <div className="text-slate-500">No cover photo</div>
+            )}
           </div>
 
           <div className="p-6 space-y-4">
@@ -36,8 +48,9 @@ export function ReelDetailModal({ journey, memories, discoveries, onClose }: Ree
               <div>
                 <h2 className="text-2xl font-bold text-white">{journey.title}</h2>
                 <p className="text-sm text-slate-400 mt-1">{journey.date} • {journey.duration} • {journey.distance}</p>
+                <p className="text-xs text-slate-500 mt-1">Location: {memories[0]?.location || journey.location}</p>
               </div>
-              <div className="text-sm text-slate-400">Mood: <span className="font-semibold text-white">{journey.mood}</span></div>
+              <div className="text-sm text-slate-400">Mood: <span className="font-semibold text-white">{memories[0]?.mood || journey.mood}</span></div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -47,9 +60,11 @@ export function ReelDetailModal({ journey, memories, discoveries, onClose }: Ree
 
                 <h3 className="text-sm font-semibold text-white mt-4">Polaroid Stack</h3>
                 <div className="flex flex-wrap gap-3 mt-2">
-                  {memories.length > 0 ? memories.slice(0,6).map((m, i) => (
-                    <PolaroidPhoto key={i} src={m.src} caption={m.caption} rotation={(i%5)-2} scale={0.95} />
-                  )) : (
+                  {memories.filter(m => m.photos && m.photos.length > 0).length > 0 ? (
+                    memories.filter(m => m.photos && m.photos.length > 0).slice(0,6).map((m, i) => (
+                      <PolaroidPhoto key={m.id} src={m.photos![0]} caption={m.title} rotation={(i%5)-2} scale={0.95} />
+                    ))
+                  ) : (
                     <div className="text-slate-500">No photos for this journey yet.</div>
                   )}
                 </div>
@@ -74,7 +89,16 @@ export function ReelDetailModal({ journey, memories, discoveries, onClose }: Ree
                   {discoveries.length > 0 ? discoveries.map((d, i) => (
                     <div key={i} className="flex items-start gap-3">
                       <div className="w-12 h-12 bg-slate-800 rounded-md overflow-hidden">
-                        {d.coverPhoto ? <img src={d.coverPhoto} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center">💡</div>}
+                        {d.coverPhoto ? (
+                          <img
+                            src={d.coverPhoto}
+                            className="w-full h-full object-cover"
+                            alt={d.title}
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">💡</div>
+                        )}
                       </div>
                       <div>
                         <div className="text-sm font-semibold text-white">{d.title}</div>

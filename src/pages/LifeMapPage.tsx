@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigation } from '../context/NavigationContext';
-import InteractiveMap from '../components/maps/InteractiveMap';
-import MemoryDrawer from '../components/maps/MemoryDrawer';
+const InteractiveMap = React.lazy(() => import('../components/maps/InteractiveMap'));
+const MemoryDrawer = React.lazy(() => import('../components/maps/MemoryDrawer'));
 import { useMemory } from '../context/MemoryContext';
 import type { MapNode, DailyJourney } from '../types';
 import { getAllDailyJourneys } from '../services/journeyStorage';
@@ -267,15 +267,17 @@ export function LifeMapPage() {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="flex-1 min-w-0"
         >
-          <InteractiveMap
-            selectedNode={selectedNode}
-            onSelectNode={handleSelectNode}
-            onOpenDrawer={handleOpenDrawer}
-            selectedDay={selectedDay}
-            dayLabel={journeyToShow?.dayLabel}
-            nodes={journeyToShow?.nodes || []}
-            routes={journeyToShow?.routes || []}
-          />
+          <React.Suspense fallback={<div className="h-full w-full">Loading map...</div>}>
+            <InteractiveMap
+              selectedNode={selectedNode}
+              onSelectNode={handleSelectNode}
+              onOpenDrawer={handleOpenDrawer}
+              selectedDay={selectedDay}
+              dayLabel={journeyToShow?.dayLabel}
+              nodes={journeyToShow?.nodes || []}
+              routes={journeyToShow?.routes || []}
+            />
+          </React.Suspense>
         </motion.div>
 
         {/* Right Memory Drawer */}
@@ -288,12 +290,14 @@ export function LifeMapPage() {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="flex-shrink-0 h-[650px]"
             >
-              <MemoryDrawer
-                node={selectedNode}
-                isOpen={isDrawerOpen}
-                onClose={handleCloseDrawer}
-                journeyStorySummary={journeyToShow?.storySummary}
-              />
+              <React.Suspense fallback={<div className="h-full w-full">Loading...</div>}>
+                <MemoryDrawer
+                  node={selectedNode}
+                  isOpen={isDrawerOpen}
+                  onClose={handleCloseDrawer}
+                  journeyStorySummary={journeyToShow?.storySummary}
+                />
+              </React.Suspense>
             </motion.div>
           )}
         </AnimatePresence>

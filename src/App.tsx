@@ -12,22 +12,24 @@ import AppShell from './components/layout/AppShell';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
-import DashboardPage from './pages/DashboardPage';
-import StartJourneyPage from './pages/StartJourneyPage';
-import LiveJourneyPage from './pages/LiveJourneyPage';
-import JourneySummaryPage from './pages/JourneySummaryPage';
-import JourneyDetailsPage from './pages/JourneyDetailsPage';
-import MemoriesPage from './pages/MemoriesPage';
-import DiscoverPage from './pages/DiscoverPage';
-import LifeMapPage from './pages/LifeMapPage';
 import SafetyCenterPage from './pages/SafetyCenterPage';
-import ProfilePage from './pages/ProfilePage';
+
+// Lazy-loaded pages (route-level code-splitting)
+const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
+const StartJourneyPage = React.lazy(() => import('./pages/StartJourneyPage'));
+const LiveJourneyPage = React.lazy(() => import('./pages/LiveJourneyPage'));
+const JourneySummaryPage = React.lazy(() => import('./pages/JourneySummaryPage'));
+const JourneyDetailsPage = React.lazy(() => import('./pages/JourneyDetailsPage'));
+const MemoriesPage = React.lazy(() => import('./pages/MemoriesPage'));
+const DiscoverPage = React.lazy(() => import('./pages/DiscoverPage'));
+const LifeMapPage = React.lazy(() => import('./pages/LifeMapPage'));
+const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 
 // Framer Motion spring and easing curves (70% Apple, 10% Futuristic Magic)
 const pageVariants = {
-  initial: { opacity: 0, y: 16, filter: 'blur(8px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
-  exit: { opacity: 0, y: -10, filter: 'blur(6px)' },
+  initial: { opacity: 0, y: 16 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -10 },
 };
 
 const pageTransition = {
@@ -119,13 +121,15 @@ function RootContent() {
         transition={pageTransition}
         className="w-full min-h-screen bg-[#050505] text-white"
       >
-        {isPublicPage ? (
-          activeContent
-        ) : (
-          <AppShell>
-            {activeContent}
-          </AppShell>
-        )}
+        <React.Suspense fallback={<div className="p-6">Loading...</div>}>
+          {isPublicPage ? (
+            activeContent
+          ) : (
+            <AppShell>
+              {activeContent}
+            </AppShell>
+          )}
+        </React.Suspense>
       </motion.div>
     </AnimatePresence>
   );

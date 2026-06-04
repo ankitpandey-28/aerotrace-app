@@ -49,9 +49,9 @@ export function MemoriesReelPage() {
     <div className="space-y-6">
       <section className="rounded-[28px] border border-white/5 bg-slate-900/40 p-6 backdrop-blur-xl">
         <div>
-          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">MEMORIES REEL</span>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Relive your journeys</h2>
-          <p className="mt-2 text-xs text-slate-400 font-light leading-5 max-w-xl">A cinematic view of completed journeys grouped by month. Tap a reel to open a story-first detail view.</p>
+          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">MEMORY JOURNAL</span>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Your Memory Journal</h2>
+          <p className="mt-2 text-xs text-slate-400 font-light leading-5 max-w-xl">A story-first view of your completed journeys and saved moments. Tap an entry to open the full narrative.</p>
         </div>
       </section>
 
@@ -90,7 +90,6 @@ export function MemoriesReelPage() {
       {openJourney && (
         <ReelDetailModal
           journey={openJourney}
-          memories={[]}
           discoveries={discoveries.filter(d => d.sourceJourneyId === openJourney.id)}
           onClose={closeDetail}
         />

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useJourney } from '../context/JourneyContext';
+import { getAllSavedDiscoveries } from '../services/journeyStorage';
 import { useMemory } from '../context/MemoryContext';
+import { getSavedJourneys } from '../services/journeyStorage';
 import { MOOD_OPTIONS } from '../types';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -11,22 +13,52 @@ import type { MemoryItem, Memory } from '../types';
 export function MemoriesPage() {
   const { /* legacyMemories */ } = useJourney();
   const { memories: enhancedMemories, deleteMemory } = useMemory();
+  const { discoveries: journeyDiscoveries } = useJourney();
+
+  const allDiscoveries = React.useMemo(() => {
+    const saved = getAllSavedDiscoveries();
+    const merged = [...journeyDiscoveries, ...saved];
+    return Array.from(new Map(merged.map(d => [d.id, d])).values());
+  }, [journeyDiscoveries]);
   const [filter, setFilter] = useState<'All' | MemoryItem['type'] | 'Journal'>('All');
   const [moodFilter, setMoodFilter] = useState<string>('All');
 
-  // Combine legacy and enhanced memories for display
-  // Enhanced memories take precedence with richer display
-  const filteredMemories = enhancedMemories.filter(m => {
-    if (moodFilter !== 'All' && m.mood !== moodFilter) return false;
-    return true;
-  });
+  // Combine saved journeys' memories with MemoryContext memories
+  const combinedMemories = React.useMemo(() => {
+    const saved = getSavedJourneys();
+    const savedMemories = saved.flatMap(j => (j.memories || []).map(m => ({
+      id: m.id,
+      title: m.title,
+      note: m.note,
+      discovery: m.discovery || '',
+      mood: (m.mood || 'Reflective') as any,
+      tags: m.tags || [],
+      photos: m.photo ? [m.photo] : [],
+      location: m.location || '',
+      timestamp: m.timestamp || '',
+      journeyId: j.id,
+      lat: m.lat,
+      lng: m.lng,
+    })));
 
-  const hasEnhancedMemories = enhancedMemories.length > 0;
+    // Merge enhanced (in-memory) and saved, prefer enhanced when IDs match
+    const byId = new Map<string, any>();
+    savedMemories.forEach((m: any) => byId.set(m.id, m));
+    enhancedMemories.forEach((m: any) => byId.set(m.id, m));
+
+    const all = Array.from(byId.values()) as Memory[];
+    return all.filter(m => (moodFilter === 'All' || m.mood === moodFilter));
+  }, [enhancedMemories, moodFilter]);
+
+  const filteredMemories = combinedMemories;
+
+  const hasEnhancedMemories = combinedMemories.length > 0;
   const hasLegacyMemories = false;
 
   // Format timestamp for display
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'Unknown date';
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -190,16 +222,22 @@ export function MemoriesPage() {
                     )}
 
                     {/* Discovery */}
-                    {memory.discovery && (
-                      <div className="mt-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1">
-                          💡 Discovery
-                        </p>
-                        <p className="text-xs text-amber-200/80 font-light">
-                          {memory.discovery}
-                        </p>
-                      </div>
-                    )}
+                    {memory.discovery && (() => {
+                      // memory.discovery may be an id; resolve to a discovery object if possible
+                      const found = allDiscoveries.find(d => d.id === memory.discovery || d.title === memory.discovery);
+                      const title = found ? found.title : memory.discovery;
+                      const preview = found ? (found.description || '') : '';
+                      return (
+                        <div className="mt-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1">
+                            💡 Discovery
+                          </p>
+                          <p className="text-xs text-amber-200/80 font-light">
+                            {title}{preview ? ` — ${preview}` : ''}
+                          </p>
+                        </div>
+                      );
+                    })()}
 
                     {/* Tags */}
                     {memory.tags.length > 0 && (
@@ -237,11 +275,11 @@ export function MemoriesPage() {
 
       {/* Empty State */}
       {!hasEnhancedMemories && (
-        <div className="text-center py-16">
-          <span className="text-5xl mb-4 block">📖</span>
-          <h3 className="text-lg font-semibold text-white">Your story hasn't started yet.</h3>
-          <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
-            Start a journey, capture moments, and your memories will appear here.
+        <div className="text-center py-20">
+          <div className="mx-auto w-36 h-36 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 flex items-center justify-center text-6xl">✨</div>
+          <h3 className="mt-6 text-xl font-bold text-white">Memory Journal</h3>
+          <p className="mt-2 text-sm text-slate-400 max-w-md mx-auto">
+            Memories are stored from your device and saved journeys. Create and save journeys to populate your Memory Journal.
           </p>
         </div>
       )}

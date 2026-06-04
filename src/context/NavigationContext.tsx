@@ -36,10 +36,15 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    // Initial sync
+    // Initial sync — do not auto-redirect to protected routes here.
     const currentHash = window.location.hash;
-    if (!currentHash) {
-      window.history.replaceState(null, '', '#/landing');
+    const landingHashes = ['', '#', '#/', '#/landing'];
+    if (landingHashes.includes(currentHash)) {
+      try {
+        window.history.replaceState(null, '', '#/landing');
+      } catch {
+        window.history.replaceState(null, '', '#/landing');
+      }
     }
 
     return () => window.removeEventListener('hashchange', handleHashChange);

@@ -1,19 +1,34 @@
 import React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useJourney } from '../context/JourneyContext';
+import { useMemory } from '../context/MemoryContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { getAllSavedDiscoveries } from '../services/journeyStorage';
 
 export function DashboardPage() {
   const { go } = useNavigation();
-  const { journeys, memories, discoveries, user } = useJourney();
+  const { journeys, discoveries, user } = useJourney();
+  const { memories: enhancedMemories } = useMemory();
 
   const allDiscoveries = React.useMemo(() => {
     const saved = getAllSavedDiscoveries();
     const merged = [...discoveries, ...saved];
     return Array.from(new Map(merged.map(d => [d.id, d])).values());
   }, [discoveries]);
+
+  // Map enhanced memories into the legacy MemoryItem display shape
+  const recentMemoriesDisplay = enhancedMemories
+    .slice()
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 3)
+    .map((m) => ({
+      type: m.photos && m.photos.length > 0 ? 'Photo' : 'Note',
+      title: m.title,
+      location: m.location,
+      caption: m.note,
+      time: new Date(m.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    }));
 
   return (
     <div className="space-y-8">
@@ -38,7 +53,7 @@ export function DashboardPage() {
               <div className="text-sm text-[#A0A8B8] mt-1">Adventures</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-white">{memories.length}</div>
+              <div className="text-3xl font-bold text-white">{enhancedMemories.length}</div>
               <div className="text-sm text-[#A0A8B8] mt-1">Memories</div>
             </div>
             <div>
@@ -123,7 +138,7 @@ export function DashboardPage() {
             </div>
 
             <div className="space-y-3">
-              {memories.slice(0, 3).map((memory, idx) => (
+              {recentMemoriesDisplay.map((memory, idx) => (
                 <div
                   key={idx}
                   className="rounded-[24px] border border-white/10 bg-[#161A22]/80 p-4 hover:bg-[#161A22] transition-all duration-200"

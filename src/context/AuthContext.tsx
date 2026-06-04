@@ -39,6 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  // No dev-only auto-login here — remove temporary debug bypass for stability.
+
   return (
     <AuthContext.Provider value={{ user, login, signup, logout, isAuthenticated: !!user }}>
       {children}

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import type { Journey, MemoryItem, Discovery, JourneyStatus, Memory } from '../types';
-import { saveJourney, getSavedJourneys } from '../services/journeyStorage';
+import { saveJourney, getSavedJourneys, getAllSavedDiscoveries, SavedJourney, SavedJourneyMemory } from '../services/journeyStorage';
+import { buildLifeMapNodes, buildGpsRoute } from '../services/buildLifeMapNodes';
 import { journeys as initialJourneys } from '../data';
 import { useNavigation } from './NavigationContext';
 
@@ -126,7 +127,17 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
   // MemoryJournal should be driven by MemoryContext; keep legacy memory list empty to avoid demo data.
   const [memories, setMemories] = useState<MemoryItem[]>([]);
-  const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
+  const [discoveries, setDiscoveries] = useState<Discovery[]>(() => {
+    try {
+      const saved = getAllSavedDiscoveries();
+      if (saved && saved.length > 0) return saved;
+      // derive from initialJourneys if present
+      const derived = (initialJourneys || []).flatMap((j: any) => j.discoveries || []);
+      return derived;
+    } catch {
+      return [];
+    }
+  });
 
   // Active tracking state
   const [activeJourney, setActiveJourney] = useState<ActiveJourneyState | null>(null);
@@ -463,6 +474,112 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     setActiveJourney(null);
     setShowInactivityWarning(false);
 
+    try {
+      // Persist a SavedJourney payload so Life Map and Discoveries survive refresh
+      const isoDate = new Date().toISOString().split('T')[0];
+      const dateLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+      // Attempt to load memory journal entries from localStorage (MemoryContext persists here)
+      let savedMemories: SavedJourneyMemory[] = [];
+      try {
+        const raw = localStorage.getItem('aerotrace_memories_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            // Filter memories that occurred on this journey date
+            savedMemories = parsed
+              .filter((m: any) => {
+                if (!m.timestamp) return false;
+                try {
+                  return new Date(m.timestamp).toISOString().split('T')[0] === isoDate;
+                } catch { return false; }
+              })
+              .map((m: any) => ({
+                id: m.id || `mem-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                title: m.title || 'Memory',
+                note: m.note || m.caption || '',
+                photo: Array.isArray(m.photos) && m.photos[0] ? m.photos[0] : (m.photo || ''),
+                timestamp: m.timestamp || new Date().toISOString(),
+                location: m.location || '',
+                lat: m.lat,
+                lng: m.lng,
+                mood: m.mood,
+                discovery: m.discovery || '',
+                tags: m.tags || [],
+              } as SavedJourneyMemory));
+          }
+        }
+      } catch (e) {
+        console.warn('[endCurrentJourney] failed to parse memories from storage', e);
+      }
+
+      // Discoveries that occurred today (use current discoveries state)
+      const todaysDiscoveries = discoveries.filter(d => {
+        try {
+          return new Date(d.timestamp).toISOString().split('T')[0] === isoDate;
+        } catch { return false; }
+      });
+
+      const firstCoord = activeJourney.coordinates[0];
+      const lastCoord = activeJourney.coordinates[activeJourney.coordinates.length - 1];
+      const startTs = firstCoord && firstCoord.timestamp ? new Date(firstCoord.timestamp as number).toISOString() : new Date().toISOString();
+      const endTs = lastCoord && lastCoord.timestamp ? new Date(lastCoord.timestamp as number).toISOString() : new Date().toISOString();
+
+      // Build persisted nodes and routes so Life Map doesn't need to rebuild on every load
+      const gpsPath = activeJourney.coordinates && activeJourney.coordinates.length > 0
+        ? activeJourney.coordinates.map(c => ({ lat: c.lat, lng: c.lng }))
+        : undefined;
+
+      const getCoordsForStop = (idx: number) => {
+        const stop = activeJourney.stops[idx];
+        if (!stop) return { lat: undefined as number | undefined, lng: undefined as number | undefined, timestamp: undefined as string | undefined };
+        return { lat: stop.lat, lng: stop.lng, timestamp: stop.timestamp };
+      };
+
+      const builtNodes = buildLifeMapNodes({
+        journeyName: activeJourney.title,
+        dateLabel,
+        mood: activeJourney.mood,
+        storySummary: completedJourney.narrative,
+        totalDistance: formattedDistance,
+        totalDuration: formattedDuration,
+        stops: activeJourney.stops.map(s => ({ name: s.name, time: s.time, memoryCount: 0 })),
+        memories: savedMemories,
+        discoveries: todaysDiscoveries,
+        getCoordsForStop,
+        gpsPath: gpsPath as any,
+      });
+
+      const gpsResult = buildGpsRoute(builtNodes, gpsPath as any, activeJourney.title, formattedDistance, formattedDuration);
+
+      const saved: SavedJourney = {
+        id: activeJourney.id,
+        journeyName: activeJourney.title,
+        date: isoDate,
+        dateLabel,
+        startTime: startTs,
+        endTime: endTs,
+        totalDuration: formattedDuration,
+        totalDistance: formattedDistance,
+        totalLocations: activeJourney.stops.length,
+        totalMemories: savedMemories.length,
+        totalDiscoveries: todaysDiscoveries.length,
+        mood: activeJourney.mood,
+        stops: activeJourney.stops.map(s => ({ name: s.name, time: s.time, memoryCount: 0, lat: s.lat, lng: s.lng, timestamp: s.timestamp })),
+        memories: savedMemories,
+        discoveries: todaysDiscoveries,
+        notes: '',
+        storySummary: completedJourney.narrative,
+        nodes: builtNodes,
+        routes: gpsResult.routes,
+        savedAt: new Date().toISOString(),
+      };
+
+      saveJourney(saved);
+    } catch (e) {
+      console.warn('[endCurrentJourney] failed to persist saved journey', e);
+    }
+
     return completedJourney;
   };
 
@@ -488,8 +605,27 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addDiscovery = (discovery: Discovery) => {
-    setDiscoveries(prev => [discovery, ...prev]);
+    setDiscoveries(prev => {
+      const next = [discovery, ...prev];
+      return next;
+    });
+    // Persist discovery into saved journeys storage if applicable (not changing saved schema here)
   };
+
+  // Keep discoveries synchronized when journeys change (e.g., fresh load from localStorage)
+  useEffect(() => {
+    try {
+      const saved = getAllSavedDiscoveries();
+      if (saved && saved.length > 0) {
+        setDiscoveries(saved);
+        return;
+      }
+      const derived = (journeys || []).flatMap((j: any) => j.discoveries || []);
+      setDiscoveries(derived);
+    } catch (e) {
+      console.warn('[JourneyContext] failed to derive discoveries', e);
+    }
+  }, [journeys]);
 
   // Safety controls
   const triggerSOS = () => {
