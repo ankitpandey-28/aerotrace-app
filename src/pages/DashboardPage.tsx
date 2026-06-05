@@ -91,7 +91,7 @@ export function DashboardPage() {
               {journeys.slice(0, 3).map((journey) => (
                 <button
                   key={journey.id}
-                  onClick={() => go('journey-details')}
+                  onClick={() => go('journey-details', { id: journey.id })}
                   className="w-full text-left rounded-[28px] border border-white/10 bg-[#161A22]/80 p-6 hover:bg-[#161A22] transition-all duration-200 group"
                 >
                   <div className="flex items-start justify-between gap-4">

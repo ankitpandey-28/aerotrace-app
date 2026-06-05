@@ -70,6 +70,7 @@ interface JourneyContextType {
   addDiscovery: (discovery: Discovery) => void;
   triggerSOS: () => void;
   resetSOS: () => void;
+  reloadJourneys: () => void;
 }
 
 const JourneyContext = createContext<JourneyContextType | undefined>(undefined);
@@ -129,6 +130,12 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [discoveries, setDiscoveries] = useState<Discovery[]>(() => {
     try {
+      const local = localStorage.getItem('aerotrace_discoveries_v1');
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+
       const saved = getAllSavedDiscoveries();
       if (saved && saved.length > 0) return saved;
       // derive from initialJourneys if present
@@ -143,7 +150,26 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const [activeJourney, setActiveJourney] = useState<ActiveJourneyState | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [sosActive, setSosActive] = useState(false);
-  const [lastCompletedJourney, setLastCompletedJourney] = useState<ActiveJourneyState | null>(null);
+  const [lastCompletedJourney, setLastCompletedJourney] = useState<ActiveJourneyState | null>(() => {
+    try {
+      const saved = localStorage.getItem('aerotrace_last_completed_journey');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (lastCompletedJourney) {
+        localStorage.setItem('aerotrace_last_completed_journey', JSON.stringify(lastCompletedJourney));
+      } else {
+        localStorage.removeItem('aerotrace_last_completed_journey');
+      }
+    } catch (e) {
+      console.warn('[JourneyContext] failed to sync lastCompletedJourney to storage', e);
+    }
+  }, [lastCompletedJourney]);
 
   // GPS specific states
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -173,19 +199,59 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     return 'Active';
   }, [isOffline, gpsError, gpsAccuracy]);
 
-  // Geolocation watchPosition continuous logging (Battery optimized: only runs while active & tracking & on live page)
+  const isPaused = activeJourney?.isPaused ?? false;
+
+  // Screen Wake Lock API implementation for enhanced background tracking
+  useEffect(() => {
+    let wakeLockSentinel: any = null;
+    const requestLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+          console.log('[GPS] Screen Wake Lock acquired');
+        }
+      } catch (err) {
+        console.warn('[GPS] Wake Lock request failed:', err);
+      }
+    };
+
+    const releaseLock = async () => {
+      if (wakeLockSentinel) {
+        try {
+          await wakeLockSentinel.release();
+          wakeLockSentinel = null;
+          console.log('[GPS] Screen Wake Lock released');
+        } catch (err) {
+          console.warn('[GPS] Wake Lock release failed:', err);
+        }
+      }
+    };
+
+    if (isTracking && !isPaused) {
+      requestLock();
+    } else {
+      releaseLock();
+    }
+
+    return () => {
+      if (wakeLockSentinel) {
+        wakeLockSentinel.release().catch((err: any) => console.warn(err));
+      }
+    };
+  }, [isTracking, isPaused]);
+
+  // Geolocation watchPosition continuous logging (Battery optimized: only runs while active & tracking)
   // NOTE: We deliberately do NOT include activeJourney in the dependency array to prevent the watcher
   // from being torn down and restarted on every GPS coordinate update. The watcher callback uses the
   // functional form of setActiveJourney so it always reads the latest state without needing the
-  // dependency. Only isTracking, isPaused, and page changes should restart the watcher.
-  const isPaused = activeJourney?.isPaused ?? false;
+  // dependency. Only isTracking and isPaused changes should restart the watcher.
   useEffect(() => {
     let activeWatchId: number | null = null;
 
-    if (isTracking && !isPaused && page === 'live-journey') {
+    if (isTracking && !isPaused) {
       if ('geolocation' in navigator) {
         setGpsError(null);
-        console.log('[GPS] watchPosition started — isTracking:', isTracking, 'isPaused:', isPaused, 'page:', page);
+        console.log('[GPS] watchPosition started — isTracking:', isTracking, 'isPaused:', isPaused);
         
         activeWatchId = navigator.geolocation.watchPosition(
           (position) => {
@@ -260,7 +326,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         console.warn('[GPS] navigator.geolocation not available');
       }
     } else {
-      console.log('[GPS] watchPosition NOT started — isTracking:', isTracking, 'isPaused:', isPaused, 'page:', page);
+      console.log('[GPS] watchPosition NOT started — isTracking:', isTracking, 'isPaused:', isPaused);
     }
 
     return () => {
@@ -270,7 +336,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         console.log('[GPS] watchPosition cleared — watchId:', activeWatchId);
       }
     };
-  }, [isTracking, isPaused, page]);
+  }, [isTracking, isPaused]);
 
   // Live duration ticker & Inactivity warning checker
   useEffect(() => {
@@ -607,25 +673,73 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const addDiscovery = (discovery: Discovery) => {
     setDiscoveries(prev => {
       const next = [discovery, ...prev];
+      try {
+        localStorage.setItem('aerotrace_discoveries_v1', JSON.stringify(next));
+      } catch (e) {
+        console.warn('[JourneyContext] addDiscovery save error', e);
+      }
       return next;
     });
-    // Persist discovery into saved journeys storage if applicable (not changing saved schema here)
   };
 
   // Keep discoveries synchronized when journeys change (e.g., fresh load from localStorage)
   useEffect(() => {
     try {
       const saved = getAllSavedDiscoveries();
-      if (saved && saved.length > 0) {
-        setDiscoveries(saved);
-        return;
-      }
-      const derived = (journeys || []).flatMap((j: any) => j.discoveries || []);
-      setDiscoveries(derived);
+      setDiscoveries((prev) => {
+        const local = localStorage.getItem('aerotrace_discoveries_v1');
+        const currentList = local ? JSON.parse(local) : prev;
+        const mergedMap = new Map<string, Discovery>();
+
+        // Pre-populate with current list (active discoveries are kept)
+        (currentList || []).forEach((d: Discovery) => {
+          if (d && d.id) mergedMap.set(d.id, d);
+        });
+
+        // Merge saved discoveries from journeys
+        (saved || []).forEach((d: Discovery) => {
+          if (d && d.id && !mergedMap.has(d.id)) {
+            mergedMap.set(d.id, d);
+          }
+        });
+
+        return Array.from(mergedMap.values()).sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      });
     } catch (e) {
       console.warn('[JourneyContext] failed to derive discoveries', e);
     }
   }, [journeys]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('aerotrace_discoveries_v1', JSON.stringify(discoveries));
+    } catch (e) {
+      console.warn('[JourneyContext] failed to sync discoveries', e);
+    }
+  }, [discoveries]);
+
+  const reloadJourneys = () => {
+    try {
+      const saved = getSavedJourneys();
+      if (saved.length > 0) {
+        setJourneys(saved.map(mapSavedToJourney));
+      } else {
+        setJourneys(initialJourneys);
+      }
+    } catch {
+      setJourneys(initialJourneys);
+    }
+  };
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      reloadJourneys();
+    };
+    window.addEventListener('aerotrace_journeys_updated', handleUpdate);
+    return () => window.removeEventListener('aerotrace_journeys_updated', handleUpdate);
+  }, []);
 
   // Safety controls
   const triggerSOS = () => {
@@ -665,6 +779,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       addDiscovery,
       triggerSOS,
       resetSOS,
+      reloadJourneys,
     }}>
       {children}
     </JourneyContext.Provider>

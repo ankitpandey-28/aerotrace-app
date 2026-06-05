@@ -121,6 +121,89 @@ export function deleteJourney(id: string): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
 }
 
+/** Delete a memory from all saved journeys */
+export function deleteMemoryFromJourneys(memoryId: string): void {
+  const existing = getSavedJourneys();
+  let modified = false;
+
+  const updated = existing.map(journey => {
+    const hasMemory = journey.memories.some(m => m.id === memoryId);
+    if (!hasMemory) return journey;
+
+    modified = true;
+
+    // Filter memories
+    const filteredMemories = journey.memories.filter(m => m.id !== memoryId);
+
+    // Filter and update nodes
+    const filteredNodes = (journey.nodes || [])
+      .filter(node => {
+        // If it's a pure memory node that matches the memory title, filter it out
+        const isMemoryNodeForDeleted =
+          node.kind === 'memory' &&
+          !journey.stops.some(s => s.name === node.name);
+        return !isMemoryNodeForDeleted;
+      })
+      .map(node => {
+        // If it's a stop node of kind 'memory', update its count/label and potentially revert its kind
+        const isStopNode = journey.stops.some(s => s.name === node.name);
+        if (isStopNode && node.kind === 'memory') {
+          const remainingMemoriesForStop = filteredMemories.filter(
+            m => m.location && m.location.toLowerCase().trim() === node.name.toLowerCase().trim()
+          );
+
+          if (remainingMemoriesForStop.length === 0) {
+            const isHome = journey.stops[0]?.name === node.name;
+            const stopDiscoveries = journey.discoveries.filter(
+              d => d.title.toLowerCase().includes(node.name.toLowerCase()) ||
+                   node.name.toLowerCase().includes(d.title.toLowerCase())
+            );
+            const newKind = isHome ? 'home' as const :
+                            stopDiscoveries.length > 0 ? 'discovery' as const :
+                            'journey' as const;
+            const newLabel = newKind === 'home' ? 'Starting Point' :
+                             newKind === 'discovery' ? 'Discovery' :
+                             'Checkpoint';
+            return {
+              ...node,
+              kind: newKind,
+              label: newLabel,
+              photo: undefined,
+              photos: undefined,
+              description: `Checkpoint during ${journey.journeyName}`,
+              connectedItems: (node.connectedItems || []).filter(item => item.type !== 'memory'),
+            };
+          } else {
+            const stopPhotos = remainingMemoriesForStop.map(m => m.photo).filter(Boolean);
+            const stopNotes = remainingMemoriesForStop.map(m => m.note).filter(Boolean).join(' ');
+            return {
+              ...node,
+              label: `${remainingMemoriesForStop.length} memor${remainingMemoriesForStop.length === 1 ? 'y' : 'ies'}`,
+              photo: stopPhotos[0] || undefined,
+              photos: stopPhotos.length > 0 ? stopPhotos : undefined,
+              description: stopNotes || undefined,
+              connectedItems: (node.connectedItems || []).filter(
+                item => item.type !== 'memory' || remainingMemoriesForStop.some(rm => rm.title === item.title)
+              ),
+            };
+          }
+        }
+        return node;
+      });
+
+    return {
+      ...journey,
+      memories: filteredMemories,
+      nodes: filteredNodes,
+      totalMemories: filteredMemories.length,
+    };
+  });
+
+  if (modified) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  }
+}
+
 /** Get a single journey by ID */
 export function getJourneyById(id: string): SavedJourney | undefined {
   return getSavedJourneys().find(j => j.id === id);

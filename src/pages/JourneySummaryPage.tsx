@@ -16,65 +16,32 @@ import type { MoodType, Discovery, DiscoveryCategory } from '../types';
 // JOURNEY SUMMARY PAGE - Complete Experience
 // ============================================
 
-// Mock data for enhanced journey summary (simulates what would come from context)
-const MOCK_JOURNEY_SUMMARY = {
-  journeyName: 'Campus to Cafe Discovery',
-  date: new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
-  startTime: '2:30 PM',
-  endTime: '6:45 PM',
-  totalDuration: '4h 15m',
-  totalDistance: '5.8 km',
-  totalLocations: 5,
-  totalMemories: 4,
-  totalDiscoveries: 3,
-  mood: 'Curious' as MoodType,
-  stops: [
-    { name: 'Home', time: '2:30 PM', memoryCount: 0 },
-    { name: 'College', time: '3:15 PM', memoryCount: 1 },
-    { name: 'Hidden Coffee Shop', time: '4:30 PM', memoryCount: 2 },
-    { name: 'Bookstore Alley', time: '5:45 PM', memoryCount: 0 },
-    { name: 'Riverside Park', time: '6:30 PM', memoryCount: 1 },
-  ],
-  memories: [
-    {
-      id: 'm1',
-      title: 'Campus Garden Bloom',
-      note: 'The cherry blossoms were in full bloom near the library steps.',
-      photo: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=300&fit=crop',
-      timestamp: '3:20 PM',
-      location: 'College',
-    },
-    {
-      id: 'm2',
-      title: 'Latte Art Masterpiece',
-      note: 'The barista created a perfect rosetta pattern. Almost too beautiful to drink.',
-      photo: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400&h=300&fit=crop',
-      timestamp: '4:35 PM',
-      location: 'Hidden Coffee Shop',
-    },
-    {
-      id: 'm3',
-      title: 'Vintage Book Find',
-      note: 'Found a first edition photography book tucked in the back corner.',
-      photo: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=400&h=300&fit=crop',
-      timestamp: '5:50 PM',
-      location: 'Bookstore Alley',
-    },
-    {
-      id: 'm4',
-      title: 'Golden Hour Reflection',
-      note: 'The river caught the sunset perfectly. Everything glowed gold.',
-      photo: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=300&fit=crop',
-      timestamp: '6:35 PM',
-      location: 'Riverside Park',
-    },
-  ],
-  discoveries: [
-    { emoji: '☕', title: 'Hidden Coffee Shop', detail: 'Behind campus, through the archway' },
-    { emoji: '🌳', title: 'Quiet Park Corner', detail: 'Perfect spot for reading, hidden behind the oak trees' },
-    { emoji: '📚', title: 'Bookstore Basement Cafe', detail: 'Rare books and excellent espresso' },
-  ] as unknown as Discovery[],
-};
+interface JourneySummaryData {
+  journeyName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  totalDuration: string;
+  totalDistance: string;
+  totalLocations: number;
+  totalMemories: number;
+  totalDiscoveries: number;
+  mood: MoodType;
+  stops: {
+    name: string;
+    time: string;
+    memoryCount: number;
+  }[];
+  memories: {
+    id: string;
+    title: string;
+    note: string;
+    photo: string;
+    timestamp: string;
+    location: string;
+  }[];
+  discoveries: Discovery[];
+}
 
 // Animation variants
 const containerVariants = {
@@ -122,7 +89,7 @@ export function JourneySummaryPage() {
   const { memories: enhancedMemories } = useMemory();
 
   // State for determining which journey to show
-  const [journeyData, setJourneyData] = useState<typeof MOCK_JOURNEY_SUMMARY | null>(null);
+  const [journeyData, setJourneyData] = useState<JourneySummaryData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
@@ -206,8 +173,7 @@ export function JourneySummaryPage() {
         })),
       });
     } else {
-      // Fallback to mock data for demo purposes
-      setJourneyData(MOCK_JOURNEY_SUMMARY);
+      setJourneyData(null);
     }
   }, [lastCompletedJourney, enhancedMemories, allDiscoveries]);
 
@@ -322,7 +288,7 @@ export function JourneySummaryPage() {
     setGpsWarning(warning);
 
     const savedJourney: SavedJourney = {
-      id: `journey-${Date.now()}`,
+      id: lastCompletedJourney?.id || `journey-${Date.now()}`,
       journeyName: journeyData.journeyName,
       date: dateStr,
       dateLabel: journeyData.date,
@@ -363,12 +329,29 @@ export function JourneySummaryPage() {
     }, 2000);
   };
 
+  if (!lastCompletedJourney) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center max-w-md p-8 rounded-[32px] border border-white/10 bg-[#161A22]/65 backdrop-blur-md shadow-[0_24px_80px_-20px_rgba(0,0,0,0.8)]">
+          <div className="text-5xl mb-6">🗺️</div>
+          <h2 className="text-xl font-bold text-white mb-2">No Journey Summary</h2>
+          <p className="text-slate-400 text-sm font-light mb-8 leading-relaxed">
+            There is no recently completed journey to display. Head back to the dashboard to start tracking your next exploration!
+          </p>
+          <Button variant="primary" size="md" onClick={() => go('dashboard')}>
+            Go to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!journeyData) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <div className="text-4xl mb-4">🗺️</div>
-          <h2 className="text-xl font-bold text-white">Loading Journey Summary...</h2>
+          <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-white">Generating Summary...</h2>
         </div>
       </div>
     );

@@ -3,7 +3,7 @@ import type { Page } from '../types';
 
 interface NavigationContextType {
   page: Page;
-  go: (nextPage: Page) => void;
+  go: (nextPage: Page, params?: Record<string, string>) => void;
   prevPage: Page | null;
 }
 
@@ -13,12 +13,13 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   // Parse initial page from hash, fallback to 'landing'
   const getPageFromHash = (): Page => {
     const hash = window.location.hash.replace('#/', '');
+    const pagePart = hash.split('?')[0];
     const validPages: Page[] = [
       'landing', 'login', 'signup', 'dashboard', 'start-journey',
       'live-journey', 'journey-summary', 'journey-details', 'memories', 'memories-reel',
       'discover', 'life-map', 'safety', 'profile'
     ];
-    return validPages.includes(hash as Page) ? (hash as Page) : 'landing';
+    return validPages.includes(pagePart as Page) ? (pagePart as Page) : 'landing';
   };
 
   const [page, setPageState] = useState<Page>(getPageFromHash);
@@ -50,9 +51,14 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const go = (nextPage: Page) => {
+  const go = (nextPage: Page, params?: Record<string, string>) => {
     setPrevPage(page);
-    window.location.hash = `#/${nextPage}`;
+    let url = `#/${nextPage}`;
+    if (params) {
+      const searchParams = new URLSearchParams(params);
+      url += `?${searchParams.toString()}`;
+    }
+    window.location.hash = url;
   };
 
   return (

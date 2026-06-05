@@ -34,20 +34,30 @@ export function LiveJourneyPage() {
   } = useJourney();
   const { memories: enhancedMemories } = useMemory();
 
-  // If there's no active journey, create a quick mock one so the page doesn't break
-  const journey = activeJourney || {
-    id: 'mock-live',
-    title: 'Midnight Market Loop',
-    mood: 'Curious, Observant',
-    startPoint: 'Viaduct Steps',
-    destination: 'Night Tram',
-    durationSec: 134,
-    distanceMeters: 420,
-    stops: [],
-    coordinates: [],
-    color: 'from-cyan-400 to-indigo-500',
-    isPaused: false
-  };
+  // Recovery screen if no active tracking session is running
+  if (!activeJourney) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center max-w-md p-8 rounded-[32px] border border-white/10 bg-[#161A22]/65 backdrop-blur-md shadow-[0_24px_80px_-20px_rgba(0,0,0,0.8)]">
+          <div className="text-5xl mb-6">🚶‍♂️</div>
+          <h2 className="text-xl font-bold text-white mb-2">No Active Journey</h2>
+          <p className="text-slate-400 text-sm font-light mb-8 leading-relaxed">
+            It looks like there is no active GPS tracking session running right now. You can start a new journey from the tracking page.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button variant="border" size="md" onClick={() => go('dashboard')}>
+              Go to Dashboard
+            </Button>
+            <Button variant="primary" size="md" onClick={() => go('start-journey')}>
+              Start Journey
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const journey = activeJourney;
 
   // State for Add Checkpoint
   const [stopName, setStopName] = useState('');

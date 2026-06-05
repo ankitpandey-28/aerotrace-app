@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import type { Memory, MoodType } from '../types';
+import { deleteMemoryFromJourneys } from '../services/journeyStorage';
 
 const STORAGE_KEY = 'aerotrace_memories_v1';
 
@@ -82,6 +83,10 @@ export function MemoryProvider({ children }: { children: React.ReactNode }) {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
       return next;
     });
+    // Clean up memory from saved journeys in localStorage
+    deleteMemoryFromJourneys(id);
+    // Trigger JourneyContext to reload its journeys from localStorage
+    window.dispatchEvent(new Event('aerotrace_journeys_updated'));
   }, []);
 
   const getMemoriesByJourney = useCallback((journeyId: string) => {
