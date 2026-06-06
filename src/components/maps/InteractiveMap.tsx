@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { MapNode, MapRoute, NodeKind } from '../../types';
 import { MAP_CENTER, MAP_ZOOM } from '../../data';
+import { useTheme } from '../../context/ThemeContext';
 
 // ============================================
 // INTERACTIVE MAP - Real Map with Leaflet
@@ -106,6 +107,7 @@ export function InteractiveMap({
   routes = [],
   center = MAP_CENTER,
 }: InteractiveMapProps) {
+  const { resolvedTheme } = useTheme();
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const markerRefs = useRef<Record<string, L.Marker>>({});
@@ -189,10 +191,13 @@ export function InteractiveMap({
       >
         <MapController onMapReady={setMapInstance} />
 
-        {/* Dark mode map tiles (CartoDB Dark Matter) */}
+        {/* Dynamic theme map tiles (Voyager for Light, Dark Matter for Dark) */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url={resolvedTheme === 'light' 
+            ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          }
           subdomains="abcd"
           maxZoom={19}
         />

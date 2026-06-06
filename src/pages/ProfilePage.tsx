@@ -2,9 +2,11 @@ import React from 'react';
 import { useJourney } from '../context/JourneyContext';
 import Card from '../components/ui/Card';
 import MetricCard from '../components/ui/MetricCard';
+import { useTheme } from '../context/ThemeContext';
 
 export function ProfilePage() {
   const { user } = useJourney();
+  const { theme, setTheme } = useTheme();
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
@@ -70,6 +72,44 @@ export function ProfilePage() {
               <span className="text-slate-400 font-light">Telemetry Precision</span>
               <span className="font-semibold text-white">Balanced (Low Battery)</span>
             </div>
+          </div>
+        </Card>
+
+        {/* Theme Preferences */}
+        <Card>
+          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+            THEME PREFERENCES
+          </span>
+
+          <h3 className="mt-3 text-sm font-semibold text-white">Interface Theme</h3>
+          <p className="mt-1 text-[11px] text-slate-400 font-light leading-relaxed">
+            Choose between a dark cockpit layout, a warm journal light layout, or match your operating system theme.
+          </p>
+
+          <div className="mt-5 grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-white/5 border border-white/5">
+            {(['light', 'dark', 'system'] as const).map((t) => {
+              const isActive = theme === t;
+              const labels = {
+                light: '☀️ Light',
+                dark: '🌙 Dark',
+                system: '💻 System',
+              };
+
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTheme(t)}
+                  className={`py-2 px-1.5 rounded-xl text-xs font-semibold capitalize transition-all duration-200 ${
+                    isActive
+                      ? 'bg-white text-slate-950 shadow-md shadow-white/5 scale-[1.02]'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  {labels[t]}
+                </button>
+              );
+            })}
           </div>
         </Card>
       </div>

@@ -4,6 +4,7 @@ import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { JourneyProvider } from './context/JourneyContext';
 import { MemoryProvider } from './context/MemoryContext';
+import { ThemeProvider } from './context/ThemeContext';
 
 // Import Layouts
 import AppShell from './components/layout/AppShell';
@@ -137,15 +138,17 @@ function RootContent() {
 
 export function App() {
   return (
-    <NavigationProvider>
-      <AuthProvider>
-        <JourneyProvider>
-          <MemoryProvider>
-            <RootContent />
-          </MemoryProvider>
-        </JourneyProvider>
-      </AuthProvider>
-    </NavigationProvider>
+    <ThemeProvider>
+      <NavigationProvider>
+        <AuthProvider>
+          <JourneyProvider>
+            <MemoryProvider>
+              <RootContent />
+            </MemoryProvider>
+          </JourneyProvider>
+        </AuthProvider>
+      </NavigationProvider>
+    </ThemeProvider>
   );
 }
 

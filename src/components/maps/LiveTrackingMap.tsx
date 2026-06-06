@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { ActiveJourneyCoordinate, ActiveJourneyStop } from '../../context/JourneyContext';
+import { useTheme } from '../../context/ThemeContext';
 
 interface LiveTrackingMapProps {
   coordinates: ActiveJourneyCoordinate[];
@@ -78,6 +79,7 @@ function MapFocusController({ center }: { center: [number, number] }) {
 }
 
 export function LiveTrackingMap({ coordinates, stops, isPaused }: LiveTrackingMapProps) {
+  const { resolvedTheme } = useTheme();
   const defaultCenter: [number, number] = [0, 0];
 
   // Latest logged user coordinate (prefer most recent, otherwise first recorded point)
@@ -101,10 +103,13 @@ export function LiveTrackingMap({ coordinates, stops, isPaused }: LiveTrackingMa
       >
         {latestCoord && <MapFocusController center={center} />}
 
-        {/* Dark theme map tiles */}
+        {/* Dynamic theme map tiles (Voyager for Light, Dark Matter for Dark) */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url={resolvedTheme === 'light'
+            ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          }
           subdomains="abcd"
           maxZoom={20}
         />
