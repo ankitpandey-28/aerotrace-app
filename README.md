@@ -2,6 +2,17 @@
 
 > Capture journeys, relive memories, and build a living Life Map.
 
+> Repository restructured: frontend code is in the `frontend/` folder and backend placeholder is `backend/`.
+
+Run frontend commands from the `frontend` directory, e.g.:
+
+```
+cd frontend
+npx tsc --noEmit
+npm install
+npm run build
+```
+
 [![Release](https://img.shields.io/badge/release-v0.1.0-blue)](https://github.com/your-org/aerotrace/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tech](https://img.shields.io/badge/stack-React%20%7C%20TypeScript%20%7C%20Vite-lightgrey)](#)

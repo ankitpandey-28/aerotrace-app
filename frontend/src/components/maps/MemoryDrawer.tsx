@@ -196,7 +196,9 @@ export function MemoryDrawer({ node, isOpen, onClose, journeyStorySummary }: Mem
       {/* Close Button */}
       <div className="absolute top-4 right-4 z-10">
         <button
+          type="button"
           onClick={onClose}
+          aria-label="Close memory drawer"
           className="rounded-full p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -211,7 +213,7 @@ export function MemoryDrawer({ node, isOpen, onClose, journeyStorySummary }: Mem
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-5">
+      <div className="flex-1 overflow-y-auto p-5" tabIndex={0} aria-labelledby="memory-drawer-heading">
         {/* ===== LOCATION HEADER ===== */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -237,7 +239,7 @@ export function MemoryDrawer({ node, isOpen, onClose, journeyStorySummary }: Mem
           </div>
 
           {/* Location Name */}
-          <h2 className="text-xl font-bold text-white tracking-tight mb-1">
+          <h2 id="memory-drawer-heading" className="text-xl font-bold text-white tracking-tight mb-1">
             {node.name}
           </h2>
           <p className="text-sm text-slate-400 font-light">{node.label}</p>

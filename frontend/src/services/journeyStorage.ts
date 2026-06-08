@@ -72,13 +72,33 @@ export function seedDemoDataIfEmpty(): void {
 /** Get all saved journeys from localStorage */
 export function getSavedJourneys(): SavedJourney[] {
   try {
-    seedDemoDataIfEmpty();
+    // Do not seed demo data automatically; surface if storage is malformed
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     const journeys = Array.isArray(parsed) ? parsed : [];
-    // Filter out demo journeys to prevent rendering them on the Life Map
-    return journeys.filter(j => !j.id.startsWith('journey-demo-'));
+    // Validate journeys and warn about malformed entries rather than silently ignoring them
+    const valid: SavedJourney[] = [];
+    journeys.forEach((j: any, idx: number) => {
+      const problems: string[] = [];
+      if (!j || typeof j !== 'object') problems.push('not an object');
+      if (!j.id || typeof j.id !== 'string') problems.push('missing or invalid `id`');
+      if (!j.date || typeof j.date !== 'string') problems.push('missing or invalid `date`');
+      if (!j.stops || !Array.isArray(j.stops)) problems.push('missing or invalid `stops`');
+      if (!j.nodes || !Array.isArray(j.nodes)) problems.push('missing or invalid `nodes`');
+      if (problems.length > 0) {
+        // Keep the malformed entry but warn so developers can debug data issues
+        // Use console.warn so it's visible in dev tools and automated logs
+        // Include a compact preview to help tracing
+        const idPreview = j && j.id ? j.id : `<index:${idx}>`;
+        // eslint-disable-next-line no-console
+        console.warn(`[journeyStorage] Malformed SavedJourney ${idPreview}: ${problems.join(', ')}`);
+      }
+      // Filter out demo journeys (explicit demo prefix). Keep others even if partially malformed.
+      if (j && typeof j.id === 'string' && j.id.startsWith('journey-demo-')) return;
+      valid.push(j as SavedJourney);
+    });
+    return valid;
   } catch {
     return [];
   }
@@ -340,6 +360,13 @@ export function toDailyJourney(date: string): DailyJourney | null {
       totalTimeMin += parseInt(timeMatch[1] || '0') * 60 + parseInt(timeMatch[2] || '0');
     }
   });
+
+  // If journeys existed but produced no nodes, warn to help debugging data mapping
+  if (allNodes.length === 0) {
+    const ids = journeys.map(j => j.id).join(', ');
+    // eslint-disable-next-line no-console
+    console.warn(`[journeyStorage] toDailyJourney produced no nodes for date=${date}. journeys: ${ids}`);
+  }
 
   // Format day label
   const dateObj = new Date(date + 'T12:00:00');
